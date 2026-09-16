@@ -1,11 +1,11 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.RegularExpressions;
 using OmniCoderPilot.Application;
 
 namespace OmniCoderPilot.Infrastructure;
 
 /// <summary>
-/// Loads skills from markdown files in .mycoder/skills/ directories.
+/// Loads skills from markdown files in .omnicoderpilot/skills/ directories.
 /// Skills are prompt-based commands with frontmatter metadata.
 /// </summary>
 public sealed partial class SkillLoader : ISkillLoader
@@ -16,8 +16,8 @@ public sealed partial class SkillLoader : ISkillLoader
     {
         _skillDirs =
         [
-            Path.Combine(workspaceRoot, ".mycoder", "skills"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".mycoder", "skills"),
+            Path.Combine(workspaceRoot, ".omnicoderpilot", "skills"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".omnicoderpilot", "skills"),
         ];
     }
 

@@ -1,11 +1,11 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.RegularExpressions;
 using OmniCoderPilot.Application;
 
 namespace OmniCoderPilot.Infrastructure;
 
 /// <summary>
-/// File-based persistent memory stored in .mycoder/memory/ directory.
+/// File-based persistent memory stored in .omnicoderpilot/memory/ directory.
 /// Four memory types: User (preferences), Feedback (corrections),
 /// Project (ongoing work), Reference (external links).
 /// </summary>
@@ -15,7 +15,7 @@ public sealed partial class FileMemoryStore : IMemoryStore
 
     public FileMemoryStore(string workspaceRoot)
     {
-        _memoryDir = Path.Combine(workspaceRoot, ".mycoder", "memory");
+        _memoryDir = Path.Combine(workspaceRoot, ".omnicoderpilot", "memory");
         Directory.CreateDirectory(_memoryDir);
     }
 

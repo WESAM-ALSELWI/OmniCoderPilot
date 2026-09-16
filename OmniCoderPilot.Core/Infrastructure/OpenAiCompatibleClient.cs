@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -226,7 +226,7 @@ public sealed class OpenAiCompatibleClient(
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
         }
         req.Headers.Add("X-Title", "OmniCoderPilot");
-        req.Headers.Add("HTTP-Referer", "https://github.com/mycoder");
+        req.Headers.Add("HTTP-Referer", "https://github.com/WESAM-ALSELWI/OmniCoderPilot");
         req.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
         return req;
     }

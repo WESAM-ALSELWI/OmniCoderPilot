@@ -1,10 +1,10 @@
-﻿using OmniCoderPilot.Application;
+using OmniCoderPilot.Application;
 
 namespace OmniCoderPilot.Infrastructure;
 
 /// <summary>
 /// Reads project-level instruction files from the workspace root:
-/// CLAUDE.md, AGENTS.md, .mycoder.md — just like Claude Code reads CLAUDE.md.
+/// CLAUDE.md, AGENTS.md, .omnicoderpilot.md — just like Claude Code reads CLAUDE.md.
 /// These files let developers teach OmniCoderPilot project-specific rules, conventions,
 /// and context without having to re-explain them every session.
 /// </summary>
@@ -12,16 +12,19 @@ public sealed class ProjectMemoryService : IProjectMemoryService
 {
     private static readonly string[] CandidateFiles =
     [
-        ".mycoder.md",
+        ".omnicoderpilot.md",
+        ".omnicoder.md",
         "CLAUDE.md",
         "AGENTS.md",
         ".agents.md",
-        "MYCODER.md",
+        "OMNICODERPILOT.md",
+        "OMNICODER.md",
     ];
 
     private static readonly string[] CandidateDirs =
     [
-        ".mycoder",
+        ".omnicoderpilot",
+        ".omnicoder",
         ".agents",
         ".github",
     ];
@@ -44,7 +47,7 @@ public sealed class ProjectMemoryService : IProjectMemoryService
             catch { /* ignore unreadable files */ }
         }
 
-        // 2. Subdirectory instruction files (.mycoder/instructions.md, etc.)
+        // 2. Subdirectory instruction files (.omnicoderpilot/instructions.md, etc.)
         foreach (var dir in CandidateDirs)
         {
             var dirPath = Path.Combine(workspaceRoot, dir);

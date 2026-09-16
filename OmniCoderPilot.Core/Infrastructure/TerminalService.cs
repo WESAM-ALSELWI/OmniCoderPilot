@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Channels;
@@ -103,7 +103,7 @@ public sealed class PersistentPowerShellSession : IPersistentShell
     private readonly Process _process;
     private readonly Channel<string> _outputChannel;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private const string Sentinel = "<<<MYCODER_CMD_DONE_";
+    private const string Sentinel = "<<<OMNICODERPILOT_CMD_DONE_";
     private bool _disposed;
 
     public bool IsAlive => !_disposed && !_process.HasExited;

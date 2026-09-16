@@ -1,5 +1,7 @@
-Add-Type -Path "C:\Users\AMB\source\repos\MyCoder\MyCoder\bin\Debug\net10.0\Microsoft.Data.Sqlite.dll"
-$conn = New-Object Microsoft.Data.Sqlite.SqliteConnection("Data Source=C:\Users\AMB\source\repos\MyCoder\MyCoder\mycoder.db")
+$dllPath = Join-Path $PSScriptRoot "OmniCoderPilot.Wpf\bin\Debug\net10.0-windows\Microsoft.Data.Sqlite.dll"
+if (Test-Path $dllPath) { Add-Type -Path $dllPath }
+$dbPath = Join-Path $PSScriptRoot "omnicoderpilot.db"
+$conn = New-Object Microsoft.Data.Sqlite.SqliteConnection("Data Source=$dbPath")
 $conn.Open()
 $cmd = $conn.CreateCommand()
 $cmd.CommandText = "SELECT Role, Content, MetadataJson FROM Messages ORDER BY Id DESC LIMIT 30"

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -56,7 +56,7 @@ public partial class App : System.Windows.Application
         // ── Core Infrastructure ───────────────────────────────────────────
         services.AddSingleton<IConfiguration>(config);
         services.AddDbContextFactory<AppDbContext>(opts =>
-            opts.UseSqlite(config.GetConnectionString("OmniCoderPilot") ?? "Data Source=mycoder.db"));
+            opts.UseSqlite(config.GetConnectionString("OmniCoderPilot") ?? "Data Source=omnicoderpilot.db"));
 
         // ── LLM Clients: local Ollama + Cloud Providers ──────────────────
         services.AddHttpClient("Ollama", client =>

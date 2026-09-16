@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="MyCoder.Core/MyCoder.Core.csproj" />
-  <Project Path="MyCoder.Wpf/MyCoder.Wpf.csproj" />
+  <Project Path="OmniCoderPilot.Core/OmniCoderPilot.Core.csproj" />
+  <Project Path="OmniCoderPilot.Wpf/OmniCoderPilot.Wpf.csproj" />
 </Solution>

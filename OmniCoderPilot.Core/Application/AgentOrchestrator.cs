@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -1089,7 +1089,7 @@ public sealed class AgentOrchestrator(
         if (!string.IsNullOrWhiteSpace(skillsPrompt))
             parts.Add(skillsPrompt);
 
-        // Project-specific instructions (CLAUDE.md / AGENTS.md / .mycoder.md)
+        // Project-specific instructions (CLAUDE.md / AGENTS.md / .omnicoderpilot.md)
         if (!string.IsNullOrWhiteSpace(ctx.ProjectInstructions))
             parts.Add($"# PROJECT INSTRUCTIONS\n{ctx.ProjectInstructions}");
 
