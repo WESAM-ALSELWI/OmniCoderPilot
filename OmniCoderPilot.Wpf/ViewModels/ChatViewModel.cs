@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -94,22 +94,18 @@ public partial class ChatViewModel : ObservableObject
         var text = Prompt.Trim();
         Prompt = "";
 
-        // Auto-create workspace if needed
-        var sidebar = ((MainViewModel)System.Windows.Application.Current.MainWindow.DataContext).Sidebar;
-        if (sidebar.WorkspaceId is null)
+        // Prompt user to select workspace folder if none is selected
+        var mainVm = (MainViewModel)System.Windows.Application.Current.MainWindow.DataContext;
+        var sidebar = mainVm.Sidebar;
+        if (sidebar.WorkspaceId is null || string.IsNullOrWhiteSpace(sidebar.WorkspacePath))
         {
-            var ws = new Workspace
+            sidebar.BrowseFolder();
+            if (sidebar.WorkspaceId is null)
             {
-                Id = Guid.NewGuid(),
-                Name = "Default Workspace",
-                RootPath = @"C:\Users\AMB\source\repos\OmniCoderPilot_v2",
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            db.Workspaces.Add(ws);
-            await db.SaveChangesAsync();
-            sidebar.WorkspaceId = ws.Id;
-            sidebar.WorkspacePath = ws.RootPath;
+                // User cancelled folder selection; restore prompt
+                Prompt = text;
+                return;
+            }
         }
 
         // Create conversation if needed
@@ -149,7 +145,6 @@ public partial class ChatViewModel : ObservableObject
         _currentCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = _currentCts.Token;
 
-        var mainVm = (MainViewModel)System.Windows.Application.Current.MainWindow.DataContext;
         var wsId = mainVm.Sidebar.WorkspaceId ?? Guid.Empty;
         var activeModel = mainVm.ActiveModel;
         _ = Task.Run(async () =>

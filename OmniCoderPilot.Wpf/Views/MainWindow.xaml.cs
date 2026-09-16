@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Input;
 using OmniCoderPilot.Domain;
@@ -57,15 +57,17 @@ public partial class MainWindow : Window
 
     private void NewProject_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new Microsoft.Win32.OpenFolderDialog
+        if (DataContext is MainViewModel vm)
         {
-            Title = "Select Project Folder",
-            InitialDirectory = @"C:\Users\AMB\source\repos"
-        };
-        if (dlg.ShowDialog() == true && DataContext is MainViewModel vm)
+            vm.Sidebar.BrowseFolder();
+        }
+    }
+
+    private void WorkspaceHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
         {
-            vm.Sidebar.WorkspacePath = dlg.FolderName;
-            vm.Sidebar.OpenWorkspaceFromTextCommand.Execute(null);
+            vm.Sidebar.BrowseFolder();
         }
     }
 

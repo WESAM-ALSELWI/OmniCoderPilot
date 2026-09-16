@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -306,7 +306,6 @@ public partial class SettingsViewModel : ObservableObject
             Path.Combine(AppContext.BaseDirectory, "appsettings.json"),
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "appsettings.json"),
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "OmniCoderPilot.Core", "appsettings.json"),
-            @"C:\Users\AMB\source\repos\OmniCoderPilot_v2\OmniCoderPilot.Core\appsettings.json"
         };
 
         foreach (var p in possiblePaths)

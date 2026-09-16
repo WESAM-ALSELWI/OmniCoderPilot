@@ -36,7 +36,6 @@ public sealed class OpenRouterClient(HttpClient http, IConfiguration config) : I
                 Path.Combine(AppContext.BaseDirectory, "appsettings.json"),
                 Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "appsettings.json"),
                 Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "OmniCoderPilot.Core", "appsettings.json"),
-                @"C:\Users\AMB\source\repos\OmniCoderPilot_v2\OmniCoderPilot.Core\appsettings.json"
             };
             foreach (var p in possiblePaths)
             {

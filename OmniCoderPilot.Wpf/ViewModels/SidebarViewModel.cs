@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.ObjectModel;
@@ -21,7 +21,7 @@ public partial class SidebarViewModel : ObservableObject
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly FileTreeViewModel _fileTree;
 
-    [ObservableProperty] private string _workspacePath = @"C:\Users\AMB\source\repos\OmniCoderPilot";
+    [ObservableProperty] private string _workspacePath = "";
     [ObservableProperty] private Guid? _workspaceId;
     [ObservableProperty] private ObservableCollection<Conversation> _conversations = new();
     [ObservableProperty] private Conversation? _selectedConversation;
@@ -43,7 +43,9 @@ public partial class SidebarViewModel : ObservableObject
     [ObservableProperty] private bool _isFolderBrowserOpen;
     [ObservableProperty] private FolderBrowserViewModel? _folderBrowser;
 
-    public string WorkspaceName => System.IO.Path.GetFileName(WorkspacePath);
+    public string WorkspaceName => string.IsNullOrWhiteSpace(WorkspacePath)
+        ? "No Workspace Selected"
+        : System.IO.Path.GetFileName(WorkspacePath);
 
     partial void OnWorkspacePathChanged(string value) => OnPropertyChanged(nameof(WorkspaceName));
 
@@ -82,19 +84,21 @@ public partial class SidebarViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         await LoadModels();
-        if (!string.IsNullOrEmpty(WorkspacePath))
+        if (!string.IsNullOrWhiteSpace(WorkspacePath))
             await OpenWorkspace(WorkspacePath);
     }
 
     [RelayCommand]
-    private void BrowseFolder()
+    public void BrowseFolder()
     {
         var dlg = new Microsoft.Win32.OpenFolderDialog
         {
             Title = "Select Workspace Folder",
-            InitialDirectory = string.IsNullOrEmpty(WorkspacePath) ? @"C:\Users\AMB\source\repos" : WorkspacePath
+            InitialDirectory = string.IsNullOrEmpty(WorkspacePath)
+                ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                : WorkspacePath
         };
-        if (dlg.ShowDialog() == true)
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.FolderName))
         {
             WorkspacePath = dlg.FolderName;
             _ = OpenWorkspace(WorkspacePath);
@@ -108,7 +112,7 @@ public partial class SidebarViewModel : ObservableObject
         await OpenWorkspace(WorkspacePath);
     }
 
-    private async Task OpenWorkspace(string path)
+    public async Task OpenWorkspace(string path)
     {
         try
         {
@@ -141,7 +145,11 @@ public partial class SidebarViewModel : ObservableObject
     [RelayCommand]
     private async Task NewChatAsync()
     {
-        if (WorkspaceId is null) return;
+        if (WorkspaceId is null)
+        {
+            BrowseFolder();
+            if (WorkspaceId is null) return;
+        }
         await using var db = await _dbFactory.CreateDbContextAsync();
         var conv = new Conversation
         {
