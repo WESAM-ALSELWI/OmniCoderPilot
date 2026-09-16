@@ -1,0 +1,30 @@
+MyCoder is a local AI coding assistant - a web-based clone of tools like Cursor/Claude Code, but built to run entirely on your machine using a local Ollama LLM (default: qwen3:4b).
+
+What it does
+It provides a ChatGPT-style web UI where you can:
+
+Chat with an AI agent about coding tasks
+The agent can read, write, edit, delete files in your workspace
+Execute shell commands (PowerShell)
+Search files/grep code
+Fetch web pages and search the web
+Manage task lists (todos)
+Has a "plan mode" for planning before executing
+Honest assessment of its capabilities
+What actually works (based on the code):
+
+File operations - Read/Write/Edit/Delete/Rename files within a workspace
+Code search - Glob, grep, file search
+Command execution - Run PowerShell commands
+Streaming chat - Via SignalR to a web UI
+Conversation memory - SQLite persistence, context compression
+Self-healing loop - The AgentOrchestrator (Application/AgentOrchestrator.cs:117) has a persistent execution loop (up to 120 turns) that retries on failures, which is clever
+Permission system - Can ask user before dangerous operations
+Honest limitations:
+
+It's a prototype/MVP - targeting net10.0, using EF Core 6.0 packages (mismatched), basic implementation
+The AI quality depends entirely on Ollama + qwen3:4b - a small local model. Don't expect Claude/GPT-level reasoning
+The TypeScript src/ directory is NOT your code - it appears to be reference/source code from an existing project (looks like Claude Code's source) that was analyzed to build this .NET version
+The "self-healing" is prompt engineering - it injects recovery messages when tools fail, but it's not true self-healing
+No real testing - I see no test project
+Bottom line: It's a functional local coding assistant prototype that demonstrates the architecture well, but the actual intelligence depends on whatever small model you run via Ollama. The tool-calling infrastructure is solid; the AI brain is whatever you point it at.
