@@ -33,7 +33,8 @@ public partial class SidebarViewModel : ObservableObject
         "⚡ Groq (Free Cloud)",
         "🧠 DeepSeek Direct",
         "🤖 OpenAI Direct",
-        "⚙️ Custom Endpoint"
+        "⚙️ Custom Endpoint",
+        "🕸️ Web Chat (No API)"
     };
     [ObservableProperty] private string _selectedProvider = "All Providers";
     [ObservableProperty] private ObservableCollection<ModelItemViewModel> _allModels = new();
@@ -242,6 +243,10 @@ public partial class SidebarViewModel : ObservableObject
         {
             list = AllModels.Where(m => m.Provider == "Custom");
         }
+        else if (SelectedProvider == "🕸️ Web Chat (No API)")
+        {
+            list = AllModels.Where(m => m.Provider == "WebChat");
+        }
 
         var filtered = list.ToList();
         Models = new ObservableCollection<ModelItemViewModel>(filtered);
@@ -265,7 +270,8 @@ public partial class SidebarViewModel : ObservableObject
         name.StartsWith("qwen/", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("groq/", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("openai-direct/", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("custom/", StringComparison.OrdinalIgnoreCase);
+        name.StartsWith("custom/", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("webchat/", StringComparison.OrdinalIgnoreCase);
 
     private static void EnsureDefaultModels(List<ModelItemViewModel> items)
     {
@@ -308,6 +314,9 @@ public partial class SidebarViewModel : ObservableObject
         AddIfMissing("openai-direct/gpt-4o", true, "OpenAI");
         AddIfMissing("openai-direct/gpt-4o-mini", true, "OpenAI");
         AddIfMissing("openai-direct/o3-mini", true, "OpenAI");
+
+        // Web Chat presets (browser-based, no API key)
+        AddIfMissing("webchat/deepseek", true, "WebChat");
     }
 
     [RelayCommand]

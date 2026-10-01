@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -17,7 +17,8 @@ public sealed class ModelRouter(
     OpenAiCompatibleClient groq,
     OpenAiCompatibleClient deepseekDirect,
     OpenAiCompatibleClient openAiDirect,
-    OpenAiCompatibleClient customEndpoint) : IOllamaClient
+    OpenAiCompatibleClient customEndpoint,
+    WebChatClient? webChat = null) : IOllamaClient
 {
     public Task<bool> IsAvailableAsync(CancellationToken ct) => local.IsAvailableAsync(ct);
 
@@ -37,6 +38,13 @@ public sealed class ModelRouter(
         list.AddRange(deepseekModels);
         list.AddRange(openAiModels);
         list.AddRange(customModels);
+
+        // Web Chat models (no API key needed)
+        if (webChat is not null)
+        {
+            var webChatModels = await webChat.ListModelsAsync(ct);
+            list.AddRange(webChatModels);
+        }
 
         return list;
     }
@@ -61,6 +69,13 @@ public sealed class ModelRouter(
 
     private IOllamaClient ResolveClient(string model)
     {
+        // 0. Web Chat (browser-based, no API key)
+        if (webChat is not null &&
+            model.StartsWith(WebChatClient.ModelPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return webChat;
+        }
+
         // 1. Custom endpoint explicit models
         if (customEndpoint.CustomModels.Any(m => m.Equals(model, StringComparison.OrdinalIgnoreCase)) ||
             model.StartsWith("custom/", StringComparison.OrdinalIgnoreCase))
@@ -116,5 +131,6 @@ public sealed class ModelRouter(
         model.StartsWith("deepseek/", StringComparison.OrdinalIgnoreCase) ||
         model.StartsWith("qwen/", StringComparison.OrdinalIgnoreCase) ||
         model.StartsWith("groq/", StringComparison.OrdinalIgnoreCase) ||
-        model.StartsWith("custom/", StringComparison.OrdinalIgnoreCase);
+        model.StartsWith("custom/", StringComparison.OrdinalIgnoreCase) ||
+        model.StartsWith("webchat/", StringComparison.OrdinalIgnoreCase);
 }

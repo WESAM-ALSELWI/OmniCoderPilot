@@ -136,6 +136,12 @@ public partial class App : System.Windows.Application
         });
 
         // ModelRouter is the primary IOllamaClient — routes local vs cloud providers by model prefix
+        services.AddSingleton<IWebChatService, WebChatService>(sp =>
+            new WebChatService(sp.GetRequiredService<Dispatcher>()));
+
+        services.AddSingleton<WebChatClient>(sp =>
+            new WebChatClient(sp.GetRequiredService<IWebChatService>()));
+
         services.AddSingleton<IOllamaClient, ModelRouter>(sp =>
             new ModelRouter(
                 sp.GetRequiredService<OllamaClient>(),
@@ -143,7 +149,8 @@ public partial class App : System.Windows.Application
                 sp.GetRequiredKeyedService<OpenAiCompatibleClient>("Groq"),
                 sp.GetRequiredKeyedService<OpenAiCompatibleClient>("DeepSeek"),
                 sp.GetRequiredKeyedService<OpenAiCompatibleClient>("OpenAI"),
-                sp.GetRequiredKeyedService<OpenAiCompatibleClient>("Custom")
+                sp.GetRequiredKeyedService<OpenAiCompatibleClient>("Custom"),
+                sp.GetRequiredService<WebChatClient>()
             ));
 
         // ── Web Services ──────────────────────────────────────────────────
