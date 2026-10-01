@@ -8,404 +8,368 @@ using OmniCoderPilot.Application;
 
 namespace OmniCoderPilot.Wpf.Services;
 
+// ── Site configuration ───────────────────────────────────────────────────────
+public sealed record WebChatSiteConfig(
+    string ModelName,
+    string Url,
+    string DisplayName,
+    string InputSelector,
+    string SendSelector,
+    string ResponseSelector,
+    string StopSelector,
+    string LoginCheckSelector,
+    string LoginUrlContains
+);
+
 /// <summary>
-/// Chat2API-style service that drives https://chat.deepseek.com inside
-/// a hidden WebView2 control.  The browser lives on the WPF UI thread but
-/// is controlled from background threads via the Dispatcher.
-///
-/// Pipeline: Agent (background) → WebChatService → WebView2 (UI thread)
-///           → DeepSeek Web → JS polling → Channel → Agent stream
+/// Chat2API-style service: drives AI web chat UIs (DeepSeek, ChatGPT) inside
+/// hidden WebView2 controls — one browser per site, all hidden from the user.
+/// A temporary login window appears only when the user needs to authenticate.
 /// </summary>
 public sealed class WebChatService : IWebChatService, IDisposable
 {
-    // ── Configuration ────────────────────────────────────────────────────────
-    public string ChatUrl     => "https://chat.deepseek.com";
-    public string ProviderName => "DeepSeek Web";
+    // ── Known sites ──────────────────────────────────────────────────────────
+    public static readonly IReadOnlyList<WebChatSiteConfig> KnownSites =
+    [
+        new WebChatSiteConfig(
+            ModelName:          "webchat/deepseek",
+            Url:                "https://chat.deepseek.com",
+            DisplayName:        "DeepSeek Web",
+            InputSelector:      "textarea#chat-input, textarea[placeholder], div[contenteditable='true']",
+            SendSelector:       "button[aria-label='Send message'], button[type='submit']",
+            ResponseSelector:   "div[class*='ds-markdown'], div[class*='markdown-body']",
+            StopSelector:       "button[aria-label*='Stop'], button[data-testid*='stop'], div[class*='stop-button']",
+            LoginCheckSelector: "textarea#chat-input, textarea[placeholder]",
+            LoginUrlContains:   "/sign-in"
+        ),
+        new WebChatSiteConfig(
+            ModelName:          "webchat/chatgpt",
+            Url:                "https://chatgpt.com/",
+            DisplayName:        "ChatGPT Web",
+            InputSelector:      "#prompt-textarea, div[id='prompt-textarea']",
+            SendSelector:       "button[data-testid='send-button'], button[aria-label='Send prompt']",
+            ResponseSelector:   "div[data-message-author-role='assistant'] .markdown, div[data-message-author-role='assistant'] p",
+            StopSelector:       "button[aria-label='Stop streaming'], button[data-testid='stop-button']",
+            LoginCheckSelector: "#prompt-textarea, button[aria-label='New chat']",
+            LoginUrlContains:   "/auth/login"
+        ),
+    ];
 
-    // ── State ────────────────────────────────────────────────────────────────
-    private WebView2? _webView;
-    private Window?   _loginWindow;
+    // ── Per-site state ───────────────────────────────────────────────────────
+    private sealed class SiteState
+    {
+        public WebChatSiteConfig Config    { get; init; } = null!;
+        public WebView2?         WebView   { get; set; }
+        public bool              IsLoggedIn    { get; set; }
+        public bool              IsInitialized { get; set; }
+    }
+
+    private readonly Dictionary<string, SiteState> _sites;
     private readonly Dispatcher _dispatcher;
-    private bool _initialized;
     private bool _disposed;
 
-    // ── Login detection ──────────────────────────────────────────────────────
-    private TaskCompletionSource<bool>? _loginTcs;
-
-    public bool IsLoggedIn { get; private set; }
+    // IWebChatService legacy props
+    public string ChatUrl     => KnownSites[0].Url;
+    public string ProviderName => KnownSites[0].DisplayName;
+    public bool   IsLoggedIn  => _sites.Values.Any(s => s.IsLoggedIn);
 
     public WebChatService(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
+        _sites = KnownSites.ToDictionary(
+            s => s.ModelName,
+            s => new SiteState { Config = s },
+            StringComparer.OrdinalIgnoreCase);
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // Initialization — must run on UI thread
-    // ═════════════════════════════════════════════════════════════════════════
-    private async Task EnsureInitializedAsync()
+    private SiteState GetSite(string modelName)
     {
-        if (_initialized) return;
+        if (_sites.TryGetValue(modelName.Trim(), out var s)) return s;
+        return _sites.Values.First();
+    }
+
+    // ── IWebChatService (legacy single-site shims) ───────────────────────────
+    public Task<bool> ShowLoginAsync(CancellationToken ct)
+        => ShowLoginForSiteAsync(_sites.Values.First(), ct);
+
+    public IAsyncEnumerable<string> SendMessageAsync(string message, CancellationToken ct)
+        => SendMessageToSiteAsync(_sites.Values.First(), message, ct);
+
+    // ── IWebChatService (model-aware) ────────────────────────────────────────
+    public bool IsLoggedInFor(string modelName)       => GetSite(modelName).IsLoggedIn;
+    public Task<bool> ShowLoginForModelAsync(string modelName, CancellationToken ct)
+        => ShowLoginForSiteAsync(GetSite(modelName), ct);
+    public IAsyncEnumerable<string> SendMessageForModelAsync(string modelName, string message, CancellationToken ct)
+        => SendMessageToSiteAsync(GetSite(modelName), message, ct);
+    public string GetDisplayNameFor(string modelName) => GetSite(modelName).Config.DisplayName;
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Initialization
+    // ═════════════════════════════════════════════════════════════════════════
+    private async Task EnsureInitializedAsync(SiteState site)
+    {
+        if (site.IsInitialized) return;
+
         await _dispatcher.InvokeAsync(async () =>
         {
-            _webView = new WebView2
-            {
-                Width  = 0,
-                Height = 0,
-                Visibility = Visibility.Collapsed
-            };
-
-            // Initialize the WebView2 control (requires Edge WebView2 runtime)
+            var wv = new WebView2 { Width = 0, Height = 0, Visibility = Visibility.Collapsed };
             var env = await CoreWebView2Environment.CreateAsync();
-            await _webView.EnsureCoreWebView2Async(env);
+            await wv.EnsureCoreWebView2Async(env);
+            wv.CoreWebView2.NavigationCompleted += (_, _) =>
+                _ = Task.Run(() => CheckAndUpdateLoginAsync(site));
+            wv.CoreWebView2.Navigate(site.Config.Url);
+            site.WebView = wv;
+        }).Task.Unwrap();
 
-            // Hook navigation events for login detection
-            _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-
-            // Navigate to the chat page
-            _webView.CoreWebView2.Navigate(ChatUrl);
-        });
-        _initialized = true;
+        site.IsInitialized = true;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
     // Login
     // ═════════════════════════════════════════════════════════════════════════
-    public async Task<bool> ShowLoginAsync(CancellationToken ct)
+    private async Task<bool> ShowLoginForSiteAsync(SiteState site, CancellationToken ct)
     {
-        await EnsureInitializedAsync();
+        await EnsureInitializedAsync(site);
 
-        // Check if already logged in
-        var alreadyIn = await CheckLoggedInAsync();
-        if (alreadyIn)
-        {
-            IsLoggedIn = true;
-            return true;
-        }
+        if (await CheckLoggedInAsync(site)) { site.IsLoggedIn = true; return true; }
 
-        _loginTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loginTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // Show a login window with the WebView2 visible inside
         await _dispatcher.InvokeAsync(() =>
         {
-            // Detach webview from any hidden host and make it visible
-            _webView!.Width      = 900;
-            _webView!.Height     = 660;
-            _webView!.Visibility = Visibility.Visible;
+            site.WebView!.Width      = 1024;
+            site.WebView!.Height     = 720;
+            site.WebView!.Visibility = Visibility.Visible;
 
-            _loginWindow = new Window
+            var win = new Window
             {
-                Title  = "Log in to DeepSeek — close when done",
-                Width  = 920,
-                Height = 700,
-                Content = _webView,
+                Title  = $"Log in to {site.Config.DisplayName} — close this window when done",
+                Width  = 1060,
+                Height = 760,
+                Content = site.WebView,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen
             };
-
-            _loginWindow.Closed += (_, _) =>
+            win.Closed += (_, _) =>
             {
-                // Detach the WebView2 from the login window so it can keep being used
-                _loginWindow.Content = null;
-                _webView!.Width      = 0;
-                _webView!.Height     = 0;
-                _webView!.Visibility = Visibility.Collapsed;
-                _loginTcs?.TrySetResult(IsLoggedIn);
+                win.Content = null;
+                site.WebView!.Width      = 0;
+                site.WebView!.Height     = 0;
+                site.WebView!.Visibility = Visibility.Collapsed;
+                loginTcs.TrySetResult(site.IsLoggedIn);
             };
-
-            _loginWindow.Show();
+            win.Show();
         });
 
-        // Poll for login every 2 seconds (up to 5 minutes)
+        // Poll for login (up to 5 min)
         using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         pollCts.CancelAfter(TimeSpan.FromMinutes(5));
-
         try
         {
             while (!pollCts.Token.IsCancellationRequested)
             {
                 await Task.Delay(2000, pollCts.Token);
-                var loggedIn = await CheckLoggedInAsync();
-                if (loggedIn)
+                if (await CheckLoggedInAsync(site))
                 {
-                    IsLoggedIn = true;
-                    await _dispatcher.InvokeAsync(() => _loginWindow?.Close());
+                    site.IsLoggedIn = true;
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        if (site.WebView?.Parent is Window w) w.Close();
+                    });
                     return true;
                 }
             }
         }
         catch (OperationCanceledException) { }
 
-        // User may have closed the window manually — do a final check
-        var finalCheck = await CheckLoggedInAsync();
-        IsLoggedIn = finalCheck;
-        return finalCheck;
+        var final = await CheckLoggedInAsync(site);
+        site.IsLoggedIn = final;
+        return final;
     }
 
-    /// <summary>
-    /// Checks whether DeepSeek is showing the chat UI (i.e. user is logged in).
-    /// Looks for elements that only appear after login.
-    /// </summary>
-    private async Task<bool> CheckLoggedInAsync()
+    private async Task CheckAndUpdateLoginAsync(SiteState site)
     {
-        if (_webView == null) return false;
+        if (await CheckLoggedInAsync(site)) site.IsLoggedIn = true;
+    }
+
+    private async Task<bool> CheckLoggedInAsync(SiteState site)
+    {
+        if (site.WebView == null) return false;
         try
         {
-            // InvokeAsync with async lambda returns Task<Task<bool>> — Unwrap() flattens it
+            // Build JS without raw string interpolation to avoid {{ issues
+            var selEscaped = JsStr(site.Config.LoginCheckSelector);
+            var urlEscaped = JsStr(site.Config.LoginUrlContains);
+            var js = "(function(){ var el = document.querySelector(" + selEscaped + ");"
+                   + " var onLogin = window.location.href.includes(" + urlEscaped + ");"
+                   + " return (el && !onLogin) ? \"true\" : \"false\"; })()";
+
             var taskOfTask = _dispatcher.InvokeAsync(async () =>
             {
-                // Check for the textarea / new chat button that only appears after login
-                var js = """
-                    (function() {
-                        // DeepSeek shows a textarea with id="chat-input" when logged in
-                        var input = document.querySelector('textarea#chat-input, textarea[placeholder], div[contenteditable="true"]');
-                        var loginBtn  = document.querySelector('button[class*="login"], a[href*="/sign-in"], a[href*="/login"]');
-                        if (input && !loginBtn) return "true";
-                        return "false";
-                    })()
-                    """;
-                var r = await _webView!.ExecuteScriptAsync(js);
+                var r = await site.WebView!.ExecuteScriptAsync(js);
                 return r == "\"true\"";
             });
             return await taskOfTask.Task.Unwrap();
         }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
-    {
-        // Re-check login state after every navigation
-        _ = Task.Run(async () =>
-        {
-            var loggedIn = await CheckLoggedInAsync();
-            if (loggedIn && !IsLoggedIn)
-            {
-                IsLoggedIn = true;
-                _loginTcs?.TrySetResult(true);
-            }
-        });
+        catch { return false; }
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Send message + stream response
+    // Send + Stream
     // ═════════════════════════════════════════════════════════════════════════
-    public async IAsyncEnumerable<string> SendMessageAsync(
-        string message,
+    private async IAsyncEnumerable<string> SendMessageToSiteAsync(
+        SiteState site, string message,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        await EnsureInitializedAsync();
+        await EnsureInitializedAsync(site);
 
-        if (!IsLoggedIn)
-            throw new InvalidOperationException("Not logged in to " + ProviderName);
-
-        // Start a new chat before sending
-        await StartNewChatAsync();
-        await Task.Delay(1500, ct); // let page settle
-
-        // Type the message into the input
-        await TypeMessageAsync(message);
-        await Task.Delay(500, ct);
-
-        // Submit
-        await SubmitMessageAsync();
-
-        // Stream back response by polling DOM
-        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true });
-
-        _ = Task.Run(() => PollResponseAsync(channel.Writer, ct), ct);
-
-        await foreach (var token in channel.Reader.ReadAllAsync(ct))
+        if (!site.IsLoggedIn)
         {
-            yield return token;
+            var ok = await ShowLoginForSiteAsync(site, ct);
+            if (!ok)
+            {
+                yield return $"⚠️ Not logged in to {site.Config.DisplayName}. Please log in and try again.";
+                yield break;
+            }
         }
+
+        await StartNewChatAsync(site, ct);
+        await TypeMessageAsync(site, message);
+        await Task.Delay(400, ct);
+        await SubmitMessageAsync(site);
+
+        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true });
+        _ = Task.Run(() => PollResponseAsync(site, channel.Writer, ct), ct);
+        await foreach (var token in channel.Reader.ReadAllAsync(ct))
+            yield return token;
     }
 
-    // ── Navigate to a fresh chat ──────────────────────────────────────────────
-    private async Task StartNewChatAsync()
+    private async Task StartNewChatAsync(SiteState site, CancellationToken ct)
     {
-        await _dispatcher.InvokeAsync(async () =>
-        {
-            // Try clicking the "New Chat" button first; fall back to navigating to root
-            var js = """
-                (function() {
-                    var btn = document.querySelector('button[aria-label="New chat"], button[data-testid="new-chat-button"], a[href="/"]');
-                    if (btn) { btn.click(); return "clicked"; }
-                    return "none";
-                })()
-                """;
-            var r = await _webView!.ExecuteScriptAsync(js);
-            if (r == "\"none\"")
-                _webView!.CoreWebView2.Navigate(ChatUrl);
-        });
-        await Task.Delay(1800); // let new chat load
-    }
-
-    // ── Type message into textarea ────────────────────────────────────────────
-    private async Task TypeMessageAsync(string message)
-    {
-        // Escape the message for JSON string embedding
-        var escaped = System.Text.Json.JsonSerializer.Serialize(message);
+        var js = "(function(){ var btn = document.querySelector('button[aria-label=\"New chat\"], a[href=\"/\"]');"
+               + " if (btn) { btn.click(); return \"clicked\"; } return \"none\"; })()";
 
         await _dispatcher.InvokeAsync(async () =>
         {
-            var js = $$"""
-                (function() {
-                    var input = document.querySelector('textarea#chat-input')
-                             || document.querySelector('textarea[placeholder]')
-                             || document.querySelector('div[contenteditable="true"]');
-                    if (!input) return "no-input";
+            var r = await site.WebView!.ExecuteScriptAsync(js);
+            if (r == "\"none\"") site.WebView!.CoreWebView2.Navigate(site.Config.Url);
+        }).Task.Unwrap();
 
-                    // Focus and set value
-                    input.focus();
-
-                    // Use React's synthetic event system to properly update state
-                    var nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                        window.HTMLTextAreaElement.prototype, 'value')?.set
-                     || Object.getOwnPropertyDescriptor(
-                        window.HTMLInputElement.prototype, 'value')?.set;
-
-                    if (nativeInputValueSetter && input.tagName === 'TEXTAREA') {
-                        nativeInputValueSetter.call(input, {{escaped}});
-                    } else if (input.contentEditable === 'true') {
-                        input.textContent = {{escaped}};
-                    } else {
-                        input.value = {{escaped}};
-                    }
-
-                    // Fire React / Vue change events so the framework sees the value
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    return "ok";
-                })()
-                """;
-            await _webView!.ExecuteScriptAsync(js);
-        });
+        await Task.Delay(1800, ct);
     }
 
-    // ── Click Send button ────────────────────────────────────────────────────
-    private async Task SubmitMessageAsync()
+    private async Task TypeMessageAsync(SiteState site, string message)
     {
-        await _dispatcher.InvokeAsync(async () =>
-        {
-            var js = """
-                (function() {
-                    // DeepSeek's send button selector candidates
-                    var btn = document.querySelector('button[aria-label="Send message"]')
-                           || document.querySelector('button[data-testid="send-button"]')
-                           || document.querySelector('button[type="submit"]')
-                           || Array.from(document.querySelectorAll('button')).find(b =>
-                               b.querySelector('svg') && b.closest('form,div[class*="input"]'));
-                    if (btn) { btn.click(); return "sent"; }
+        var msgEscaped = JsStr(message);
+        var selEscaped = JsStr(site.Config.InputSelector);
 
-                    // Fallback: simulate Enter key on the input
-                    var input = document.querySelector('textarea#chat-input')
-                             || document.querySelector('textarea[placeholder]');
-                    if (input) {
-                        input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', bubbles:true}));
-                        return "enter-pressed";
-                    }
-                    return "failed";
-                })()
-                """;
-            await _webView!.ExecuteScriptAsync(js);
-        });
+        // Build JS using string concatenation — no raw string interpolation
+        var js = "(function(){"
+            + " var input = document.querySelector(" + selEscaped + ");"
+            + " if (!input) return \"no-input\";"
+            + " input.focus();"
+            + " if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {"
+            + "   var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');"
+            + "   if (nativeSetter && nativeSetter.set) { nativeSetter.set.call(input, " + msgEscaped + "); }"
+            + "   else { input.value = " + msgEscaped + "; }"
+            + " } else if (input.contentEditable === 'true') {"
+            + "   input.innerHTML = '';"
+            + "   var p = document.createElement('p');"
+            + "   p.textContent = " + msgEscaped + ";"
+            + "   input.appendChild(p);"
+            + " }"
+            + " input.dispatchEvent(new Event('input', { bubbles: true }));"
+            + " input.dispatchEvent(new Event('change', { bubbles: true }));"
+            + " return \"ok\";"
+            + "})()";
+
+        await _dispatcher.InvokeAsync(async () =>
+            await site.WebView!.ExecuteScriptAsync(js)
+        ).Task.Unwrap();
+    }
+
+    private async Task SubmitMessageAsync(SiteState site)
+    {
+        var sendSel  = JsStr(site.Config.SendSelector);
+        var inputSel = JsStr(site.Config.InputSelector);
+
+        var js = "(function(){"
+            + " var btn = document.querySelector(" + sendSel + ");"
+            + " if (btn && !btn.disabled) { btn.click(); return \"clicked\"; }"
+            + " var input = document.querySelector(" + inputSel + ");"
+            + " if (input) { input.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', bubbles:true, which:13 })); return \"enter\"; }"
+            + " return \"failed\";"
+            + "})()";
+
+        await _dispatcher.InvokeAsync(async () =>
+            await site.WebView!.ExecuteScriptAsync(js)
+        ).Task.Unwrap();
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Poll DOM for streaming response
+    // DOM polling
     // ═════════════════════════════════════════════════════════════════════════
-    private async Task PollResponseAsync(ChannelWriter<string> writer, CancellationToken ct)
+    private async Task PollResponseAsync(SiteState site, ChannelWriter<string> writer, CancellationToken ct)
     {
         try
         {
-            string lastText = "";
-            int stableCount = 0;
-            const int stableThreshold = 4;   // 4 × 600 ms = 2.4 s of stability = done
-            const int maxWaitMs = 180_000;    // 3 minutes hard timeout
-            var deadline = DateTime.UtcNow.AddMilliseconds(maxWaitMs);
+            string lastText    = "";
+            int    stableCount = 0;
+            const int stableThreshold = 4;
+            var deadline = DateTime.UtcNow.AddMinutes(3);
 
-            // Wait for response to start (up to 30 s)
-            var started = false;
+            // Wait up to 30s for response to start
             for (int i = 0; i < 60 && !ct.IsCancellationRequested; i++)
             {
                 await Task.Delay(500, ct);
-                var text = await GetResponseTextAsync();
-                if (!string.IsNullOrEmpty(text))
-                {
-                    started = true;
-                    break;
-                }
+                var t = await GetResponseTextAsync(site);
+                if (!string.IsNullOrWhiteSpace(t)) { lastText = t; break; }
             }
 
-            if (!started)
+            if (string.IsNullOrWhiteSpace(lastText))
             {
-                await writer.WriteAsync("⚠️ No response received from " + ProviderName + " within 30 seconds.", ct);
+                await writer.WriteAsync($"⚠️ No response from {site.Config.DisplayName} in 30s.", ct);
                 return;
             }
 
-            // Stream tokens as the response grows
+            await writer.WriteAsync(lastText, ct);
+
             while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
             {
-                await Task.Delay(600, ct);
-                var currentText = await GetResponseTextAsync();
+                await Task.Delay(700, ct);
+                var current = await GetResponseTextAsync(site);
 
-                if (currentText.Length > lastText.Length)
+                if (current.Length > lastText.Length)
                 {
-                    var newTokens = currentText[lastText.Length..];
-                    await writer.WriteAsync(newTokens, ct);
-                    lastText = currentText;
+                    await writer.WriteAsync(current[lastText.Length..], ct);
+                    lastText    = current;
                     stableCount = 0;
                 }
-                else
-                {
-                    stableCount++;
-                }
+                else { stableCount++; }
 
-                // Check if DeepSeek finished generating
-                var isGenerating = await IsStillGeneratingAsync();
-                if (!isGenerating && stableCount >= stableThreshold)
+                if (!await IsStillGeneratingAsync(site) && stableCount >= stableThreshold)
                     break;
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            try { await writer.WriteAsync($"\n⚠️ Error reading response: {ex.Message}", ct); } catch { }
-        }
-        finally
-        {
-            writer.Complete();
-        }
+        catch (Exception ex) { try { await writer.WriteAsync($"\n⚠️ {ex.Message}", ct); } catch { } }
+        finally { writer.Complete(); }
     }
 
-    /// <summary>
-    /// Returns the full text content of the last (latest) assistant message.
-    /// </summary>
-    private async Task<string> GetResponseTextAsync()
+    private async Task<string> GetResponseTextAsync(SiteState site)
     {
         try
         {
+            var selEscaped = JsStr(site.Config.ResponseSelector);
+            var js = "(function(){"
+                   + " var msgs = document.querySelectorAll(" + selEscaped + ");"
+                   + " if (!msgs || msgs.length === 0) return \"\";"
+                   + " var last = msgs[msgs.length - 1];"
+                   + " return last.innerText || last.textContent || \"\";"
+                   + "})()";
+
             var taskOfTask = _dispatcher.InvokeAsync(async () =>
             {
-                var js = """
-                    (function() {
-                        // DeepSeek renders messages in markdown blocks
-                        // Try multiple selectors in order of specificity
-                        var msgs = document.querySelectorAll(
-                            'div[class*="markdown"] .markdown-body, ' +
-                            'div[class*="response"] .markdown-body, ' +
-                            'div[data-message-author-role="assistant"] .markdown-body, ' +
-                            'div[class*="ds-markdown"], ' +
-                            'div[class*="assistant-message"]'
-                        );
-                        if (!msgs || msgs.length === 0) return "";
-                        // Get the last assistant message
-                        return msgs[msgs.length - 1].innerText || "";
-                    })()
-                    """;
-                var raw = await _webView!.ExecuteScriptAsync(js);
-                // Unescape JSON string returned by ExecuteScriptAsync
+                var raw = await site.WebView!.ExecuteScriptAsync(js);
                 if (raw != null && raw.StartsWith("\"") && raw.EndsWith("\""))
                     return System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
                 return "";
@@ -415,27 +379,19 @@ public sealed class WebChatService : IWebChatService, IDisposable
         catch { return ""; }
     }
 
-    /// <summary>
-    /// Returns true if DeepSeek is still generating (Stop button visible, or spinner present).
-    /// </summary>
-    private async Task<bool> IsStillGeneratingAsync()
+    private async Task<bool> IsStillGeneratingAsync(SiteState site)
     {
         try
         {
+            var selEscaped = JsStr(site.Config.StopSelector);
+            var js = "(function(){"
+                   + " var stop = document.querySelector(" + selEscaped + ");"
+                   + " return stop ? \"true\" : \"false\";"
+                   + "})()";
+
             var taskOfTask = _dispatcher.InvokeAsync(async () =>
             {
-                var js = """
-                    (function() {
-                        // Check for Stop/pause button or loading spinner
-                        var stop = document.querySelector(
-                            'button[aria-label*="Stop"], button[aria-label*="stop"], ' +
-                            'button[data-testid*="stop"], div[class*="stop-button"], ' +
-                            'div[class*="loading"], span[class*="loading"]'
-                        );
-                        return stop ? "true" : "false";
-                    })()
-                    """;
-                var r = await _webView!.ExecuteScriptAsync(js);
+                var r = await site.WebView!.ExecuteScriptAsync(js);
                 return r == "\"true\"";
             });
             return await taskOfTask.Task.Unwrap();
@@ -443,17 +399,24 @@ public sealed class WebChatService : IWebChatService, IDisposable
         catch { return false; }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // Disposal
-    // ═════════════════════════════════════════════════════════════════════════
+    // ── JS string escaping ───────────────────────────────────────────────────
+    private static string JsStr(string value)
+        => "\"" + value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\n", "\\n")
+            .Replace("\r", "\\r")
+            .Replace("\t", "\\t")
+          + "\"";
+
+    // ── Disposal ─────────────────────────────────────────────────────────────
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _dispatcher.InvokeAsync(() =>
         {
-            _loginWindow?.Close();
-            _webView?.Dispose();
+            foreach (var s in _sites.Values) s.WebView?.Dispose();
         });
     }
 }

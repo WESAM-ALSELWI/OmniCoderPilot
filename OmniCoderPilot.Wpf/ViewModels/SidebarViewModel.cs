@@ -196,7 +196,7 @@ public partial class SidebarViewModel : ObservableObject
                 {
                     Name = m.Name,
                     DisplayName = m.Name,
-                    Provider = isRemote ? "OpenRouter" : "Local Ollama",
+                    Provider = ResolveProvider(m.Name),
                     IsRemote = isRemote
                 });
             }
@@ -273,6 +273,22 @@ public partial class SidebarViewModel : ObservableObject
         name.StartsWith("custom/", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("webchat/", StringComparison.OrdinalIgnoreCase);
 
+    private static string ResolveProvider(string name)
+    {
+        if (name.StartsWith("webchat/", StringComparison.OrdinalIgnoreCase))     return "WebChat";
+        if (name.StartsWith("groq/", StringComparison.OrdinalIgnoreCase))         return "Groq";
+        if (name.StartsWith("deepseek-chat", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("deepseek-reasoner", StringComparison.OrdinalIgnoreCase)) return "DeepSeek";
+        if (name.StartsWith("openai-direct/", StringComparison.OrdinalIgnoreCase)) return "OpenAI";
+        if (name.StartsWith("custom/", StringComparison.OrdinalIgnoreCase))       return "Custom";
+        if (name.StartsWith("llama-", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("deepseek-r1-distill", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("qwen-2.5-coder", StringComparison.OrdinalIgnoreCase))  return "Groq";
+        // Default remote → OpenRouter
+        if (IsRemoteModel(name)) return "OpenRouter";
+        return "Local Ollama";
+    }
+
     private static void EnsureDefaultModels(List<ModelItemViewModel> items)
     {
         void AddIfMissing(string name, bool isRemote, string provider)
@@ -317,6 +333,7 @@ public partial class SidebarViewModel : ObservableObject
 
         // Web Chat presets (browser-based, no API key)
         AddIfMissing("webchat/deepseek", true, "WebChat");
+        AddIfMissing("webchat/chatgpt",  true, "WebChat");
     }
 
     [RelayCommand]
@@ -357,8 +374,8 @@ public sealed class ModelItemViewModel : ObservableObject
     public string DisplayName { get; init; } = "";
     public string Provider { get; init; } = "Local Ollama";
     public bool IsRemote { get; init; }
-    public string Icon => IsRemote ? "🌐" : "💻";
-    public string Tag => IsRemote ? "OpenRouter" : "Ollama";
+    public string Icon => Provider == "WebChat" ? "🕸️" : IsRemote ? "🌐" : "💻";
+    public string Tag  => Provider == "WebChat" ? "WebChat" : IsRemote ? Provider : "Ollama";
 }
 
 public sealed record ConversationSelectedEvent(Guid ConversationId);

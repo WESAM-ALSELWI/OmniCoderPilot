@@ -1,36 +1,36 @@
 namespace OmniCoderPilot.Application;
 
 /// <summary>
-/// Chat2API-style service: drives a real web-chat UI (DeepSeek, ChatGPT, etc.)
+/// Chat2API-style service: drives real web-chat UIs (DeepSeek, ChatGPT, etc.)
 /// inside an embedded browser instead of calling the official REST API.
 /// Implementations live in OmniCoderPilot.Wpf (WebView2-based).
 /// </summary>
 public interface IWebChatService
 {
-    /// <summary>
-    /// Current login state of the embedded browser session.
-    /// </summary>
-    bool IsLoggedIn { get; }
-
-    /// <summary>
-    /// URL of the web chat page this service targets (e.g. "https://chat.deepseek.com").
-    /// </summary>
-    string ChatUrl { get; }
-
-    /// <summary>
-    /// Provider display name, e.g. "DeepSeek Web".
-    /// </summary>
+    // ── Legacy single-site API (kept for compat) ──────────────────────────
+    bool   IsLoggedIn  { get; }
+    string ChatUrl     { get; }
     string ProviderName { get; }
 
-    /// <summary>
-    /// Show the embedded browser so the user can log in manually.
-    /// Returns true once the user is detected as logged in.
-    /// </summary>
-    Task<bool> ShowLoginAsync(CancellationToken ct);
+    Task<bool>                ShowLoginAsync(CancellationToken ct);
+    IAsyncEnumerable<string>  SendMessageAsync(string message, CancellationToken ct);
+
+    // ── Multi-site model-aware API ─────────────────────────────────────────
+
+    /// <summary>True if the user is logged in for the given model ("webchat/deepseek" etc.).</summary>
+    bool IsLoggedInFor(string modelName);
 
     /// <summary>
-    /// Send a message to the web chat page and stream back the assistant response tokens.
-    /// Throws if not logged in.
+    /// Show the login window for the site that matches <paramref name="modelName"/>.
+    /// Returns true once login is detected.
     /// </summary>
-    IAsyncEnumerable<string> SendMessageAsync(string message, CancellationToken ct);
+    Task<bool> ShowLoginForModelAsync(string modelName, CancellationToken ct);
+
+    /// <summary>
+    /// Send a message to the site that matches <paramref name="modelName"/> and stream back tokens.
+    /// </summary>
+    IAsyncEnumerable<string> SendMessageForModelAsync(string modelName, string message, CancellationToken ct);
+
+    /// <summary>Display name for a given model name, e.g. "ChatGPT Web" for "webchat/chatgpt".</summary>
+    string GetDisplayNameFor(string modelName);
 }
