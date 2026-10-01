@@ -23,8 +23,13 @@ public sealed record WebChatSiteConfig(
 
 /// <summary>
 /// Chat2API-style service: drives AI web chat UIs (DeepSeek, ChatGPT) inside
-/// hidden WebView2 controls — one browser per site, all hidden from the user.
-/// A temporary login window appears only when the user needs to authenticate.
+/// WebView2 controls hosted in hidden background windows.
+///
+/// Architecture:
+///  • Each site gets a persistent hidden host Window (0×0, not in taskbar)
+///    that keeps the WebView2 alive and initialized.
+///  • When login is needed a *second* visible window borrows the WebView2 so
+///    the user can log in, then returns it to the hidden host when done.
 /// </summary>
 public sealed class WebChatService : IWebChatService, IDisposable
 {
@@ -35,10 +40,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
             ModelName:          "webchat/deepseek",
             Url:                "https://chat.deepseek.com",
             DisplayName:        "DeepSeek Web",
-            InputSelector:      "textarea#chat-input, textarea[placeholder], div[contenteditable='true']",
+            InputSelector:      "textarea#chat-input, textarea[placeholder]",
             SendSelector:       "button[aria-label='Send message'], button[type='submit']",
             ResponseSelector:   "div[class*='ds-markdown'], div[class*='markdown-body']",
-            StopSelector:       "button[aria-label*='Stop'], button[data-testid*='stop'], div[class*='stop-button']",
+            StopSelector:       "button[aria-label*='Stop'], button[data-testid*='stop']",
             LoginCheckSelector: "textarea#chat-input, textarea[placeholder]",
             LoginUrlContains:   "/sign-in"
         ),
@@ -58,8 +63,9 @@ public sealed class WebChatService : IWebChatService, IDisposable
     // ── Per-site state ───────────────────────────────────────────────────────
     private sealed class SiteState
     {
-        public WebChatSiteConfig Config    { get; init; } = null!;
-        public WebView2?         WebView   { get; set; }
+        public WebChatSiteConfig Config     { get; init; } = null!;
+        public WebView2?         WebView    { get; set; }
+        public Window?           HostWindow { get; set; }  // hidden host window
         public bool              IsLoggedIn    { get; set; }
         public bool              IsInitialized { get; set; }
     }
@@ -88,10 +94,9 @@ public sealed class WebChatService : IWebChatService, IDisposable
         return _sites.Values.First();
     }
 
-    // ── IWebChatService (legacy single-site shims) ───────────────────────────
+    // ── IWebChatService (legacy) ──────────────────────────────────────────────
     public Task<bool> ShowLoginAsync(CancellationToken ct)
         => ShowLoginForSiteAsync(_sites.Values.First(), ct);
-
     public IAsyncEnumerable<string> SendMessageAsync(string message, CancellationToken ct)
         => SendMessageToSiteAsync(_sites.Values.First(), message, ct);
 
@@ -104,23 +109,56 @@ public sealed class WebChatService : IWebChatService, IDisposable
     public string GetDisplayNameFor(string modelName) => GetSite(modelName).Config.DisplayName;
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Initialization
+    // Initialization — must run on UI thread
+    // KEY FIX: WebView2 is created inside a hidden host Window so it has
+    //          a valid visual tree and EnsureCoreWebView2Async works.
     // ═════════════════════════════════════════════════════════════════════════
     private async Task EnsureInitializedAsync(SiteState site)
     {
         if (site.IsInitialized) return;
 
-        await _dispatcher.InvokeAsync(async () =>
-        {
-            var wv = new WebView2 { Width = 0, Height = 0, Visibility = Visibility.Collapsed };
-            var env = await CoreWebView2Environment.CreateAsync();
-            await wv.EnsureCoreWebView2Async(env);
-            wv.CoreWebView2.NavigationCompleted += (_, _) =>
-                _ = Task.Run(() => CheckAndUpdateLoginAsync(site));
-            wv.CoreWebView2.Navigate(site.Config.Url);
-            site.WebView = wv;
-        }).Task.Unwrap();
+        // Create WebView2 + host it in a hidden 1×1 window on the UI thread
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        _dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                var wv = new WebView2();
+
+                // Hidden host window — keeps WebView2 alive in a visual tree
+                var host = new Window
+                {
+                    Width  = 1,
+                    Height = 1,
+                    Left   = -10000,   // off-screen
+                    Top    = -10000,
+                    ShowInTaskbar   = false,
+                    ShowActivated   = false,
+                    WindowStyle     = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Opacity         = 0,
+                    Content         = wv
+                };
+                host.Show();    // must Show() so WebView2 is in a live visual tree
+
+                // Now we can initialize CoreWebView2
+                await wv.EnsureCoreWebView2Async();
+                wv.CoreWebView2.Navigate(site.Config.Url);
+                wv.CoreWebView2.NavigationCompleted += (_, _) =>
+                    _ = Task.Run(() => CheckAndUpdateLoginAsync(site));
+
+                site.WebView    = wv;
+                site.HostWindow = host;
+                tcs.SetResult();
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+
+        await tcs.Task;  // wait for UI-thread init to complete
         site.IsInitialized = true;
     }
 
@@ -133,36 +171,40 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
         if (await CheckLoggedInAsync(site)) { site.IsLoggedIn = true; return true; }
 
-        var loginTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loginDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await _dispatcher.InvokeAsync(() =>
+        // Show a login window: move WebView2 out of the hidden host into a visible window
+        _dispatcher.InvokeAsync(() =>
         {
-            site.WebView!.Width      = 1024;
-            site.WebView!.Height     = 720;
-            site.WebView!.Visibility = Visibility.Visible;
+            // Detach from host window
+            site.HostWindow!.Content = null;
 
-            var win = new Window
+            var loginWin = new Window
             {
                 Title  = $"Log in to {site.Config.DisplayName} — close this window when done",
-                Width  = 1060,
-                Height = 760,
-                Content = site.WebView,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen
+                Width  = 1100,
+                Height = 780,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                ShowInTaskbar = true,
+                Content = site.WebView
             };
-            win.Closed += (_, _) =>
+
+            loginWin.Closed += (_, _) =>
             {
-                win.Content = null;
-                site.WebView!.Width      = 0;
-                site.WebView!.Height     = 0;
-                site.WebView!.Visibility = Visibility.Collapsed;
-                loginTcs.TrySetResult(site.IsLoggedIn);
+                // Move WebView2 back to the hidden host window
+                loginWin.Content     = null;
+                site.HostWindow!.Content = site.WebView;
+                loginDone.TrySetResult(site.IsLoggedIn);
             };
-            win.Show();
+
+            loginWin.Show();
+            loginWin.Activate();
         });
 
-        // Poll for login (up to 5 min)
+        // Poll every 2s for login detection (up to 5 min)
         using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         pollCts.CancelAfter(TimeSpan.FromMinutes(5));
+
         try
         {
             while (!pollCts.Token.IsCancellationRequested)
@@ -171,9 +213,14 @@ public sealed class WebChatService : IWebChatService, IDisposable
                 if (await CheckLoggedInAsync(site))
                 {
                     site.IsLoggedIn = true;
-                    await _dispatcher.InvokeAsync(() =>
+                    // Auto-close the login window
+                    _dispatcher.InvokeAsync(() =>
                     {
-                        if (site.WebView?.Parent is Window w) w.Close();
+                        // Find the login window by looking for the window that owns site.WebView
+                        foreach (Window w in System.Windows.Application.Current.Windows)
+                        {
+                            if (w.Content == site.WebView) { w.Close(); break; }
+                        }
                     });
                     return true;
                 }
@@ -181,9 +228,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
         }
         catch (OperationCanceledException) { }
 
-        var final = await CheckLoggedInAsync(site);
-        site.IsLoggedIn = final;
-        return final;
+        // Wait for window to be closed by the user
+        var result = await loginDone.Task.WaitAsync(ct).ConfigureAwait(false);
+        site.IsLoggedIn = result || await CheckLoggedInAsync(site);
+        return site.IsLoggedIn;
     }
 
     private async Task CheckAndUpdateLoginAsync(SiteState site)
@@ -196,7 +244,6 @@ public sealed class WebChatService : IWebChatService, IDisposable
         if (site.WebView == null) return false;
         try
         {
-            // Build JS without raw string interpolation to avoid {{ issues
             var selEscaped = JsStr(site.Config.LoginCheckSelector);
             var urlEscaped = JsStr(site.Config.LoginUrlContains);
             var js = "(function(){ var el = document.querySelector(" + selEscaped + ");"
@@ -234,7 +281,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
         await StartNewChatAsync(site, ct);
         await TypeMessageAsync(site, message);
-        await Task.Delay(400, ct);
+        await Task.Delay(600, ct);
         await SubmitMessageAsync(site);
 
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true });
@@ -248,13 +295,14 @@ public sealed class WebChatService : IWebChatService, IDisposable
         var js = "(function(){ var btn = document.querySelector('button[aria-label=\"New chat\"], a[href=\"/\"]');"
                + " if (btn) { btn.click(); return \"clicked\"; } return \"none\"; })()";
 
-        await _dispatcher.InvokeAsync(async () =>
+        var taskOfTask = _dispatcher.InvokeAsync(async () =>
         {
             var r = await site.WebView!.ExecuteScriptAsync(js);
             if (r == "\"none\"") site.WebView!.CoreWebView2.Navigate(site.Config.Url);
-        }).Task.Unwrap();
-
-        await Task.Delay(1800, ct);
+            return r;
+        });
+        await taskOfTask.Task.Unwrap();
+        await Task.Delay(2000, ct);
     }
 
     private async Task TypeMessageAsync(SiteState site, string message)
@@ -262,29 +310,28 @@ public sealed class WebChatService : IWebChatService, IDisposable
         var msgEscaped = JsStr(message);
         var selEscaped = JsStr(site.Config.InputSelector);
 
-        // Build JS using string concatenation — no raw string interpolation
         var js = "(function(){"
             + " var input = document.querySelector(" + selEscaped + ");"
             + " if (!input) return \"no-input\";"
             + " input.focus();"
             + " if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {"
-            + "   var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');"
-            + "   if (nativeSetter && nativeSetter.set) { nativeSetter.set.call(input, " + msgEscaped + "); }"
+            + "   var desc = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')"
+            + "           || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');"
+            + "   if (desc && desc.set) { desc.set.call(input, " + msgEscaped + "); }"
             + "   else { input.value = " + msgEscaped + "; }"
             + " } else if (input.contentEditable === 'true') {"
             + "   input.innerHTML = '';"
-            + "   var p = document.createElement('p');"
-            + "   p.textContent = " + msgEscaped + ";"
+            + "   var p = document.createElement('p'); p.textContent = " + msgEscaped + ";"
             + "   input.appendChild(p);"
             + " }"
-            + " input.dispatchEvent(new Event('input', { bubbles: true }));"
+            + " input.dispatchEvent(new Event('input',  { bubbles: true }));"
             + " input.dispatchEvent(new Event('change', { bubbles: true }));"
             + " return \"ok\";"
             + "})()";
 
-        await _dispatcher.InvokeAsync(async () =>
-            await site.WebView!.ExecuteScriptAsync(js)
-        ).Task.Unwrap();
+        var taskOfTask = _dispatcher.InvokeAsync(async () =>
+            await site.WebView!.ExecuteScriptAsync(js));
+        await taskOfTask.Task.Unwrap();
     }
 
     private async Task SubmitMessageAsync(SiteState site)
@@ -296,13 +343,16 @@ public sealed class WebChatService : IWebChatService, IDisposable
             + " var btn = document.querySelector(" + sendSel + ");"
             + " if (btn && !btn.disabled) { btn.click(); return \"clicked\"; }"
             + " var input = document.querySelector(" + inputSel + ");"
-            + " if (input) { input.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', bubbles:true, which:13 })); return \"enter\"; }"
+            + " if (input) {"
+            + "   input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,which:13}));"
+            + "   return \"enter\";"
+            + " }"
             + " return \"failed\";"
             + "})()";
 
-        await _dispatcher.InvokeAsync(async () =>
-            await site.WebView!.ExecuteScriptAsync(js)
-        ).Task.Unwrap();
+        var taskOfTask = _dispatcher.InvokeAsync(async () =>
+            await site.WebView!.ExecuteScriptAsync(js));
+        await taskOfTask.Task.Unwrap();
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -312,12 +362,12 @@ public sealed class WebChatService : IWebChatService, IDisposable
     {
         try
         {
-            string lastText    = "";
-            int    stableCount = 0;
+            string lastText = "";
+            int stableCount = 0;
             const int stableThreshold = 4;
             var deadline = DateTime.UtcNow.AddMinutes(3);
 
-            // Wait up to 30s for response to start
+            // Wait up to 30s for response
             for (int i = 0; i < 60 && !ct.IsCancellationRequested; i++)
             {
                 await Task.Delay(500, ct);
@@ -416,7 +466,11 @@ public sealed class WebChatService : IWebChatService, IDisposable
         _disposed = true;
         _dispatcher.InvokeAsync(() =>
         {
-            foreach (var s in _sites.Values) s.WebView?.Dispose();
+            foreach (var s in _sites.Values)
+            {
+                s.WebView?.Dispose();
+                s.HostWindow?.Close();
+            }
         });
     }
 }
