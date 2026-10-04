@@ -144,6 +144,7 @@ public sealed class AgentOrchestrator(
             var allToolResults = new List<ToolResult>();
             var turnStart = System.Diagnostics.Stopwatch.StartNew();
             StopHookExecutor? stopHooks = null;
+            var isWebChat = request.Model?.StartsWith("webchat/", StringComparison.OrdinalIgnoreCase) == true;
 
             // ═══════════════════════════════════════════════════════════════════
             // PERSISTENT EXECUTION LOOP — state-machine driven
@@ -177,7 +178,13 @@ public sealed class AgentOrchestrator(
                     {
                         // Accumulate content text
                         if (!string.IsNullOrEmpty(chunk.Content))
+                        {
                             fullResponse.Append(chunk.Content);
+                            if (isWebChat)
+                            {
+                                await sink.TokenAsync(request.ConnectionId, request.ConversationId, chunk.Content);
+                            }
+                        }
 
                         // Collect native tool_calls from streaming response
                         if (chunk.ToolCalls is not null && chunk.ToolCalls.Count > 0)
@@ -266,17 +273,17 @@ public sealed class AgentOrchestrator(
                 // Strip <think> from visible text
                 var visibleText = StripThinking(textContent, out var thinking);
 
-                // ALWAYS send thinking/reasoning as inline collapsible step
-                // Use actual <think> content if present, otherwise use the visible text as thinking
+                // ALWAYS send thinking/reasoning as inline collapsible step only when actual thinking exists
+                // or when tool calls exist and text is a pre-tool thought.
                 var thinkingToShow = !string.IsNullOrWhiteSpace(thinking)
                     ? Trim(thinking, 1200)
-                    : Trim(visibleText, 1200);
+                    : (toolCalls.Count > 0 && !isWebChat ? Trim(visibleText, 1200) : null);
                 if (!string.IsNullOrWhiteSpace(thinkingToShow))
                     await sink.ThinkingStepAsync(request.ConnectionId, request.ConversationId,
                         thinkingToShow, (int)llmStart.ElapsedMilliseconds, state.TurnCount, AgentLoopPhase.Think);
 
                 // ── Fallback: parse tool calls from text if native returned none ──
-                if (toolCalls.Count == 0 && !string.IsNullOrWhiteSpace(visibleText))
+                if (toolCalls.Count == 0 && !string.IsNullOrWhiteSpace(visibleText) && !isWebChat)
                 {
                     var parsed = ParseToolCallsFromText(visibleText).ToList();
                     if (parsed.Count > 0)
@@ -290,6 +297,18 @@ public sealed class AgentOrchestrator(
                 if (toolCalls.Count == 0)
                 {
                     state.ConsecutiveNoTools++;
+
+                    // WebChat models (or conversational tasks where tools aren't needed)
+                    if (isWebChat || (!state.ExecutedAnyTool && !LooksLikeWorkspaceTask(request.Prompt)))
+                    {
+                        var final = visibleText.Trim();
+                        finalAnswer.Append(final);
+                        if (!isWebChat)
+                        {
+                            await sink.TokenAsync(request.ConnectionId, request.ConversationId, final);
+                        }
+                        break;
+                    }
 
                     // If the task looks like it needs workspace actions but no tools called yet
                     if (!state.ExecutedAnyTool && LooksLikeWorkspaceTask(request.Prompt) && state.NoToolRedirects < 3)
