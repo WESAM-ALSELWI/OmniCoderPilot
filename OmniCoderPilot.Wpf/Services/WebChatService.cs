@@ -8,19 +8,19 @@ using OmniCoderPilot.Application;
 
 namespace OmniCoderPilot.Wpf.Services;
 
-// ── Site configuration ───────────────────────────────────────────────────────
 public sealed record WebChatSiteConfig(
     string ModelName,
     string Url,
     string DisplayName,
-    string LoginCheckSelector, // element present only after login
-    string LoginUrlContains    // URL fragment that means "not logged in"
+    string LoginCheckSelector,
+    string LoginUrlContains
 );
 
 /// <summary>
-/// Chat2API service: drives DeepSeek / ChatGPT web UIs inside a hidden WebView2.
-/// Each site has a persistent hidden host Window so WebView2 always has a visual tree.
-/// A visible login Window borrows the WebView2 when the user needs to authenticate.
+/// Chat2API: drives DeepSeek/ChatGPT web UIs inside a hidden WebView2.
+/// Each site has a persistent off-screen host Window so WebView2 always
+/// has a valid visual tree. A visible login Window borrows the WebView2
+/// temporarily, then returns it when the user is done.
 /// </summary>
 public sealed class WebChatService : IWebChatService, IDisposable
 {
@@ -46,10 +46,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
     // ── Per-site state ───────────────────────────────────────────────────────
     private sealed class SiteState
     {
-        public WebChatSiteConfig Config     { get; init; } = null!;
-        public WebView2?         WebView    { get; set; }
-        public Window?           HostWindow { get; set; }   // invisible host
-        public Window?           LoginWindow { get; set; }  // visible login window (or null)
+        public WebChatSiteConfig Config      { get; init; } = null!;
+        public WebView2?         WebView     { get; set; }
+        public Window?           HostWindow  { get; set; }
+        public Window?           LoginWindow { get; set; }
         public bool              IsLoggedIn    { get; set; }
         public bool              IsInitialized { get; set; }
     }
@@ -58,7 +58,6 @@ public sealed class WebChatService : IWebChatService, IDisposable
     private readonly Dispatcher _dispatcher;
     private bool _disposed;
 
-    // IWebChatService
     public string ChatUrl      => KnownSites[0].Url;
     public string ProviderName => KnownSites[0].DisplayName;
     public bool   IsLoggedIn   => _sites.Values.Any(s => s.IsLoggedIn);
@@ -79,20 +78,19 @@ public sealed class WebChatService : IWebChatService, IDisposable
     }
 
     // ── IWebChatService ───────────────────────────────────────────────────────
-    public Task<bool>            ShowLoginAsync(CancellationToken ct)        => ShowLoginForSiteAsync(_sites.Values.First(), ct);
-    public IAsyncEnumerable<string> SendMessageAsync(string msg, CancellationToken ct) => SendMessageToSiteAsync(_sites.Values.First(), msg, ct);
-    public bool                  IsLoggedInFor(string model)                 => GetSite(model).IsLoggedIn;
-    public Task<bool>            ShowLoginForModelAsync(string model, CancellationToken ct)  => ShowLoginForSiteAsync(GetSite(model), ct);
+    public Task<bool>               ShowLoginAsync(CancellationToken ct)                          => ShowLoginForSiteAsync(_sites.Values.First(), ct);
+    public IAsyncEnumerable<string> SendMessageAsync(string msg, CancellationToken ct)            => SendMessageToSiteAsync(_sites.Values.First(), msg, ct);
+    public bool                     IsLoggedInFor(string model)                                   => GetSite(model).IsLoggedIn;
+    public Task<bool>               ShowLoginForModelAsync(string model, CancellationToken ct)    => ShowLoginForSiteAsync(GetSite(model), ct);
     public IAsyncEnumerable<string> SendMessageForModelAsync(string model, string msg, CancellationToken ct) => SendMessageToSiteAsync(GetSite(model), msg, ct);
-    public string                GetDisplayNameFor(string model)             => GetSite(model).Config.DisplayName;
+    public string                   GetDisplayNameFor(string model)                               => GetSite(model).Config.DisplayName;
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Init — WebView2 lives in a tiny hidden off-screen Window
+    // Init — WebView2 lives in a tiny off-screen host Window
     // ═════════════════════════════════════════════════════════════════════════
     private async Task EnsureInitializedAsync(SiteState site)
     {
         if (site.IsInitialized) return;
-
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _dispatcher.InvokeAsync(async () =>
@@ -100,17 +98,16 @@ public sealed class WebChatService : IWebChatService, IDisposable
             try
             {
                 var wv = new WebView2();
-
                 var host = new Window
                 {
-                    Width  = 1, Height = 1,
+                    Width = 1, Height = 1,
                     Left = -32000, Top = -32000,
                     ShowInTaskbar = false, ShowActivated = false,
-                    WindowStyle   = WindowStyle.None,
+                    WindowStyle = WindowStyle.None,
                     AllowsTransparency = true, Opacity = 0,
                     Content = wv
                 };
-                host.Show();   // must be in a live visual tree for WebView2 to init
+                host.Show();  // WebView2 requires a live visual tree
 
                 await wv.EnsureCoreWebView2Async();
                 wv.CoreWebView2.Navigate(site.Config.Url);
@@ -127,68 +124,54 @@ public sealed class WebChatService : IWebChatService, IDisposable
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Login — FIXED: awaited show, reliable auto-close, window ref in state
+    // Login
     // ═════════════════════════════════════════════════════════════════════════
     private async Task<bool> ShowLoginForSiteAsync(SiteState site, CancellationToken ct)
     {
         await EnsureInitializedAsync(site);
-
-        // Already logged in?
         if (await CheckLoggedInAsync(site)) { site.IsLoggedIn = true; return true; }
 
         var loginDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // ── FIXED: await the InvokeAsync so window is shown before we poll ──
+        // AWAIT the show so window is visible before polling starts
         await _dispatcher.InvokeAsync(() =>
         {
-            // Move WebView2 from hidden host → visible login window
             site.HostWindow!.Content = null;
 
             var loginWin = new Window
             {
-                Title  = $"Log in to {site.Config.DisplayName}  —  window closes automatically when done",
+                Title  = $"Log in to {site.Config.DisplayName}  —  closes automatically when done",
                 Width  = 1100, Height = 780,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ShowInTaskbar = true,
                 Content = site.WebView
             };
-
             loginWin.Closed += (_, _) =>
             {
                 site.LoginWindow = null;
                 loginWin.Content = null;
-                // Return WebView2 to host
                 if (site.HostWindow != null)
                     site.HostWindow.Content = site.WebView;
                 loginDone.TrySetResult(site.IsLoggedIn);
             };
-
             site.LoginWindow = loginWin;
             loginWin.Show();
             loginWin.Activate();
         });
 
-        // ── Poll every 2 s for login (up to 5 min) ───────────────────────────
+        // Poll every 2s for up to 5 min
         using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         pollCts.CancelAfter(TimeSpan.FromMinutes(5));
-
         try
         {
             while (!pollCts.Token.IsCancellationRequested)
             {
                 await Task.Delay(2000, pollCts.Token);
-
                 if (await CheckLoggedInAsync(site))
                 {
                     site.IsLoggedIn = true;
-
-                    // ── FIXED: await the close so WebView2 is returned to host BEFORE we proceed ──
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        site.LoginWindow?.Close();   // triggers Closed → returns WebView2 to host
-                    });
-
-                    // Wait until the Closed handler has finished returning WebView2 to host
+                    // AWAIT close so WebView2 is back in host before we proceed
+                    await _dispatcher.InvokeAsync(() => site.LoginWindow?.Close());
                     await loginDone.Task;
                     return true;
                 }
@@ -196,7 +179,6 @@ public sealed class WebChatService : IWebChatService, IDisposable
         }
         catch (OperationCanceledException) { }
 
-        // User closed the window manually — wait for Closed event to complete
         try { await loginDone.Task.WaitAsync(TimeSpan.FromSeconds(5)); } catch { }
         site.IsLoggedIn = await CheckLoggedInAsync(site);
         return site.IsLoggedIn;
@@ -207,21 +189,20 @@ public sealed class WebChatService : IWebChatService, IDisposable
         if (site.WebView == null) return false;
         try
         {
-            var sel     = JsStr(site.Config.LoginCheckSelector);
-            var urlFrag = JsStr(site.Config.LoginUrlContains);
-            var js = "(function(){ "
-                   + "  var el = document.querySelector(" + sel + "); "
-                   + "  var onLoginPage = window.location.href.toLowerCase().includes(" + urlFrag + "); "
-                   + "  return (el && !onLoginPage) ? 'true' : 'false'; "
+            var sel  = JsStr(site.Config.LoginCheckSelector);
+            var frag = JsStr(site.Config.LoginUrlContains);
+            var js = "(function(){"
+                   + "  var el = document.querySelector(" + sel + ");"
+                   + "  var onLogin = window.location.href.toLowerCase().includes(" + frag + ");"
+                   + "  return (el && !onLogin) ? 'true' : 'false';"
                    + "})()";
-
             return await ExecScriptBoolAsync(site, js);
         }
         catch { return false; }
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Send + Stream — FIXED response reading with robust multi-site JS
+    // Send + Stream
     // ═════════════════════════════════════════════════════════════════════════
     private async IAsyncEnumerable<string> SendMessageToSiteAsync(
         SiteState site, string message,
@@ -239,167 +220,175 @@ public sealed class WebChatService : IWebChatService, IDisposable
             }
         }
 
-        // Navigate to fresh chat + wait for input to be ready
         await NavigateToNewChatAsync(site, ct);
 
-        // Wait up to 10 s for the text input to appear
-        bool inputReady = await WaitForInputAsync(site, ct, timeoutSeconds: 10);
+        bool inputReady = await WaitForInputAsync(site, ct, timeoutSeconds: 12);
         if (!inputReady)
         {
             yield return $"⚠️ Timed out waiting for {site.Config.DisplayName} input box.";
             yield break;
         }
 
-        // Type + submit
+        // Snapshot: count assistant messages BEFORE we send
+        var snapshotCount = await GetAssistantMessageCountAsync(site);
+
         var typed = await TypeMessageAsync(site, message);
         if (typed == "no-input")
         {
-            yield return "⚠️ Could not find chat input box. Please try again.";
+            yield return "⚠️ Could not find the chat input. Please try again.";
             yield break;
         }
 
         await Task.Delay(500, ct);
         await SubmitMessageAsync(site);
 
-        // Stream response via DOM polling
+        // Stream the response (only messages appearing AFTER snapshot)
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true });
-        _ = Task.Run(() => PollResponseAsync(site, channel.Writer, ct), ct);
+        _ = Task.Run(() => PollResponseAsync(site, snapshotCount, channel.Writer, ct), ct);
         await foreach (var token in channel.Reader.ReadAllAsync(ct))
             yield return token;
     }
 
-    // ── Navigate to a fresh chat ──────────────────────────────────────────────
     private async Task NavigateToNewChatAsync(SiteState site, CancellationToken ct)
     {
-        // Try clicking the "New Chat" button; fall back to navigating to root URL
-        var js = "(function(){ "
-               + "  var btn = document.querySelector('button[aria-label=\"New chat\"]') "
-               + "          || document.querySelector('a[href=\"/\"]'); "
-               + "  if (btn) { btn.click(); return 'clicked'; } "
-               + "  return 'none'; "
+        var js = "(function(){"
+               + "  var btn = document.querySelector('button[aria-label=\"New chat\"]') || document.querySelector('a[href=\"/\"]');"
+               + "  if (btn) { btn.click(); return 'clicked'; }"
+               + "  return 'none';"
                + "})()";
-
-        var result = await ExecScriptStringAsync(site, js);
-        if (result != "clicked")
-        {
-            // Navigate directly
-            await _dispatcher.InvokeAsync(() =>
-                site.WebView!.CoreWebView2.Navigate(site.Config.Url));
-        }
-        await Task.Delay(2500, ct); // wait for new chat to load
+        var r = await ExecScriptStringAsync(site, js);
+        if (r != "clicked")
+            await _dispatcher.InvokeAsync(() => site.WebView!.CoreWebView2.Navigate(site.Config.Url));
+        await Task.Delay(2500, ct);
     }
 
-    // ── Wait until the text input box is present ──────────────────────────────
     private async Task<bool> WaitForInputAsync(SiteState site, CancellationToken ct, int timeoutSeconds)
     {
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
-            var js = "(function(){ "
-                   + "  var el = document.querySelector('#chat-input') "
-                   + "         || document.querySelector('#prompt-textarea') "
-                   + "         || document.querySelector('textarea[placeholder]') "
-                   + "         || document.querySelector('div[contenteditable=\"true\"]'); "
-                   + "  return el ? 'ready' : 'wait'; "
+            var js = "(function(){"
+                   + "  var el = document.querySelector('#chat-input')"
+                   + "         || document.querySelector('#prompt-textarea')"
+                   + "         || document.querySelector('textarea[placeholder]')"
+                   + "         || document.querySelector('div[contenteditable=\"true\"]');"
+                   + "  return el ? 'ready' : 'wait';"
                    + "})()";
-            var r = await ExecScriptStringAsync(site, js);
-            if (r == "ready") return true;
+            if (await ExecScriptStringAsync(site, js) == "ready") return true;
             await Task.Delay(700, ct);
         }
         return false;
     }
 
-    // ── Type the message ──────────────────────────────────────────────────────
     private async Task<string> TypeMessageAsync(SiteState site, string message)
     {
         var msg = JsStr(message);
-        var js = "(function(){ "
-            // Try all known input selectors in order
-            + "  var input = document.querySelector('#chat-input') "
-            + "           || document.querySelector('#prompt-textarea') "
-            + "           || document.querySelector('div[id=\"prompt-textarea\"]') "
-            + "           || document.querySelector('textarea[placeholder]') "
-            + "           || document.querySelector('div[contenteditable=\"true\"]'); "
-            + "  if (!input) return 'no-input'; "
-            + "  input.focus(); "
-            + "  if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') { "
-            + "    var desc = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value') "
-            + "            || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value'); "
-            + "    if (desc && desc.set) { desc.set.call(input, " + msg + "); } "
-            + "    else { input.value = " + msg + "; } "
-            + "  } else { "  // contenteditable (ChatGPT uses a div)
-            + "    input.innerHTML = ''; "
-            + "    var p = document.createElement('p'); "
-            + "    p.textContent = " + msg + "; "
-            + "    input.appendChild(p); "
-            + "  } "
-            + "  input.dispatchEvent(new Event('input',  { bubbles: true })); "
-            + "  input.dispatchEvent(new Event('change', { bubbles: true })); "
-            + "  return 'ok'; "
+        var js = "(function(){"
+            + "  var input = document.querySelector('#chat-input')"
+            + "           || document.querySelector('#prompt-textarea')"
+            + "           || document.querySelector('div[id=\"prompt-textarea\"]')"
+            + "           || document.querySelector('textarea[placeholder]')"
+            + "           || document.querySelector('div[contenteditable=\"true\"]');"
+            + "  if (!input) return 'no-input';"
+            + "  input.focus();"
+            + "  if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {"
+            + "    var desc = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')"
+            + "            || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');"
+            + "    if (desc && desc.set) { desc.set.call(input, " + msg + "); }"
+            + "    else { input.value = " + msg + "; }"
+            + "    input.dispatchEvent(new Event('input',  { bubbles: true }));"
+            + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
+            + "  } else {"
+            // contenteditable (ChatGPT) — DataTransfer paste trick works with React
+            + "    input.focus();"
+            + "    document.execCommand('selectAll', false, null);"
+            + "    document.execCommand('delete',    false, null);"
+            + "    try {"
+            + "      var dt = new DataTransfer();"
+            + "      dt.setData('text/plain', " + msg + ");"
+            + "      input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));"
+            + "    } catch(e) { document.execCommand('insertText', false, " + msg + "); }"
+            + "  }"
+            + "  return 'ok';"
             + "})()";
-
         return await ExecScriptStringAsync(site, js);
     }
 
-    // ── Click the Send button ─────────────────────────────────────────────────
     private async Task SubmitMessageAsync(SiteState site)
     {
-        var js = "(function(){ "
-            + "  var btn = document.querySelector('button[data-testid=\"send-button\"]') "
-            + "          || document.querySelector('button[aria-label=\"Send message\"]') "
-            + "          || document.querySelector('button[aria-label=\"Send prompt\"]') "
-            + "          || document.querySelector('button[type=\"submit\"]'); "
-            + "  if (btn && !btn.disabled) { btn.click(); return 'clicked'; } "
-            // Fallback: press Enter on the input
-            + "  var input = document.querySelector('#chat-input') "
-            + "           || document.querySelector('#prompt-textarea') "
-            + "           || document.querySelector('div[contenteditable=\"true\"]'); "
-            + "  if (input) { "
-            + "    input.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', which:13, bubbles:true })); "
-            + "    return 'enter'; "
-            + "  } "
-            + "  return 'failed'; "
+        var js = "(function(){"
+            + "  var btn = document.querySelector('button[data-testid=\"send-button\"]')"
+            + "          || document.querySelector('button[aria-label=\"Send message\"]')"
+            + "          || document.querySelector('button[aria-label=\"Send prompt\"]')"
+            + "          || document.querySelector('button[type=\"submit\"]');"
+            + "  if (btn && !btn.disabled) { btn.click(); return 'clicked'; }"
+            + "  var inp = document.querySelector('#chat-input')"
+            + "          || document.querySelector('#prompt-textarea')"
+            + "          || document.querySelector('div[contenteditable=\"true\"]');"
+            + "  if (inp) { inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',which:13,bubbles:true})); return 'enter'; }"
+            + "  return 'failed';"
             + "})()";
-
         await ExecScriptStringAsync(site, js);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // DOM polling — stream response text as it grows
-    // FIXED: robust selectors, proper streaming, correct stop detection
+    // Response polling — snapshot-aware (only reads messages AFTER snapshot)
     // ═════════════════════════════════════════════════════════════════════════
-    private async Task PollResponseAsync(SiteState site, ChannelWriter<string> writer, CancellationToken ct)
+
+    private async Task<int> GetAssistantMessageCountAsync(SiteState site)
+    {
+        var js = "(function(){"
+               + "  var n = document.querySelectorAll('[data-message-author-role=\"assistant\"]').length"
+               + "        + document.querySelectorAll('.ds-markdown,[class*=\"ds-markdown\"]').length;"
+               + "  return String(n);"
+               + "})()";
+        var r = await ExecScriptStringAsync(site, js);
+        return int.TryParse(r, out var n) ? n : 0;
+    }
+
+    private async Task PollResponseAsync(
+        SiteState site, int snapshotCount,
+        ChannelWriter<string> writer, CancellationToken ct)
     {
         try
         {
             string lastText    = "";
             int    stableCount = 0;
-            const int stableThreshold = 5;          // 5 × 800ms = 4s stable = done
+            const int stableThreshold = 5;   // 5 × 800ms = 4s stable = done
             var deadline = DateTime.UtcNow.AddMinutes(4);
 
-            // ── Wait up to 30s for the response to start ──────────────────────
-            for (int i = 0; i < 60 && !ct.IsCancellationRequested; i++)
+            // Wait up to 45s for new response to appear
+            for (int i = 0; i < 90 && !ct.IsCancellationRequested; i++)
             {
                 await Task.Delay(500, ct);
-                var t = await GetResponseTextAsync(site);
+                var t = await GetLatestResponseTextAsync(site, snapshotCount);
                 if (!string.IsNullOrWhiteSpace(t)) { lastText = t; break; }
             }
 
             if (string.IsNullOrWhiteSpace(lastText))
             {
-                await writer.WriteAsync($"⚠️ No response from {site.Config.DisplayName} within 30s.\n"
-                    + "Check that you are logged in and the page loaded correctly.", ct);
+                // Diagnostic dump so we can improve selectors
+                var diag = await ExecScriptStringAsync(site,
+                    "(function(){"
+                    + "  var roles = Array.from(document.querySelectorAll('[data-message-author-role]'))"
+                    + "              .map(e=>e.getAttribute('data-message-author-role')).join(',');"
+                    + "  return 'url='+window.location.href.split('?')[0]"
+                    + "        +' articles='+document.querySelectorAll('article').length"
+                    + "        +' roles=['+roles+']';"
+                    + "})()");
+                await writer.WriteAsync(
+                    $"⚠️ No response from {site.Config.DisplayName} in 45s.\n"
+                    + $"Debug: {diag}\n"
+                    + "Make sure you are logged in and the message was submitted.", ct);
                 return;
             }
 
-            // Emit the first chunk
             await writer.WriteAsync(lastText, ct);
 
-            // ── Keep streaming as the response grows ──────────────────────────
             while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
             {
                 await Task.Delay(800, ct);
-                var current = await GetResponseTextAsync(site);
+                var current = await GetLatestResponseTextAsync(site, snapshotCount);
 
                 if (current.Length > lastText.Length)
                 {
@@ -410,45 +399,51 @@ public sealed class WebChatService : IWebChatService, IDisposable
                 else
                 {
                     stableCount++;
-                    if (stableCount >= stableThreshold)
-                        break;  // text stable — generation finished
+                    if (stableCount >= stableThreshold) break;
                 }
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            try { await writer.WriteAsync($"\n⚠️ Error: {ex.Message}", ct); } catch { }
-        }
+        catch (Exception ex) { try { await writer.WriteAsync($"\n⚠️ {ex.Message}", ct); } catch { } }
         finally { writer.Complete(); }
     }
 
-    // ── FIXED response text extraction — broad selectors for both sites ───────
-    private async Task<string> GetResponseTextAsync(SiteState site)
+    private async Task<string> GetLatestResponseTextAsync(SiteState site, int snapshotCount)
     {
-        // Broad JS that works on DeepSeek AND ChatGPT without site-specific config
-        var js = "(function(){ "
-            // ChatGPT: messages are article elements with data-message-author-role
-            + "  var chatgptMsgs = document.querySelectorAll('[data-message-author-role=\"assistant\"]'); "
-            + "  if (chatgptMsgs.length > 0) { "
-            + "    var last = chatgptMsgs[chatgptMsgs.length - 1]; "
-            + "    return last.innerText || last.textContent || ''; "
-            + "  } "
-            // DeepSeek: messages use ds-markdown class
-            + "  var dsMsgs = document.querySelectorAll('.ds-markdown, [class*=\"ds-markdown\"]'); "
-            + "  if (dsMsgs.length > 0) { "
-            + "    var last = dsMsgs[dsMsgs.length - 1]; "
-            + "    return last.innerText || last.textContent || ''; "
-            + "  } "
-            // Generic fallback: any assistant/bot message container
-            + "  var genericMsgs = document.querySelectorAll("
-            + "    '[class*=\"assistant-message\"], [class*=\"bot-message\"], "
-            + "     [class*=\"response\"] .markdown, [class*=\"reply\"]'); "
-            + "  if (genericMsgs.length > 0) { "
-            + "    var last = genericMsgs[genericMsgs.length - 1]; "
-            + "    return last.innerText || last.textContent || ''; "
-            + "  } "
-            + "  return ''; "
+        var snap = snapshotCount.ToString();
+        var js = "(function(){"
+            + "  var snap=" + snap + ";"
+
+            // Strategy 1: ChatGPT — data-message-author-role="assistant"
+            + "  var cg=document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
+            + "  if(cg.length>snap){"
+            + "    var el=cg[cg.length-1];"
+            + "    var md=el.querySelector('.markdown,.prose,[class*=\"markdown\"]')||el;"
+            + "    var t=md.innerText; if(t&&t.trim()) return t.trim();"
+            + "  }"
+
+            // Strategy 2: ChatGPT — article elements
+            + "  var arts=document.querySelectorAll('article');"
+            + "  if(arts.length>snap){"
+            + "    for(var i=arts.length-1;i>=snap;i--){"
+            + "      var r=arts[i].querySelector('[data-message-author-role=\"assistant\"]');"
+            + "      if(r){var t=r.innerText; if(t&&t.trim()) return t.trim();}"
+            + "    }"
+            + "  }"
+
+            // Strategy 3: DeepSeek — .ds-markdown
+            + "  var ds=document.querySelectorAll('.ds-markdown,[class*=\"ds-markdown\"]');"
+            + "  if(ds.length>snap){"
+            + "    var t=ds[ds.length-1].innerText; if(t&&t.trim()) return t.trim();"
+            + "  }"
+
+            // Strategy 4: generic fallback
+            + "  var gen=document.querySelectorAll('[class*=\"assistant\"],[class*=\"bot-msg\"],[class*=\"ai-message\"]');"
+            + "  if(gen.length>snap){"
+            + "    var t=gen[gen.length-1].innerText; if(t&&t.trim()) return t.trim();"
+            + "  }"
+
+            + "  return '';"
             + "})()";
 
         try
@@ -466,7 +461,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Helper: execute JS and return the unquoted string result
+    // JS execution helpers
     // ═════════════════════════════════════════════════════════════════════════
     private async Task<string> ExecScriptStringAsync(SiteState site, string js)
     {
@@ -475,7 +470,6 @@ public sealed class WebChatService : IWebChatService, IDisposable
             var taskOfTask = _dispatcher.InvokeAsync(async () =>
             {
                 var raw = await site.WebView!.ExecuteScriptAsync(js);
-                // ExecuteScriptAsync returns JSON — unquote a string result
                 if (raw != null && raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
                     return System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
                 return raw ?? "";
@@ -499,7 +493,6 @@ public sealed class WebChatService : IWebChatService, IDisposable
         catch { return false; }
     }
 
-    // ── Escape a C# string for embedding as a JS string literal ──────────────
     private static string JsStr(string v)
         => "\"" + v.Replace("\\", "\\\\").Replace("\"", "\\\"")
                    .Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t")
