@@ -85,6 +85,47 @@ public sealed class WebChatService : IWebChatService, IDisposable
     public Task<bool>               ShowLoginForModelAsync(string model, CancellationToken ct)    => ShowLoginForSiteAsync(GetSite(model), ct);
     public IAsyncEnumerable<string> SendMessageForModelAsync(string model, string msg, CancellationToken ct) => SendMessageToSiteAsync(GetSite(model), msg, ct);
     public string                   GetDisplayNameFor(string model)                               => GetSite(model).Config.DisplayName;
+    public Task                     LogoutAsync(string model)                                     => LogoutSiteAsync(GetSite(model));
+    public Task<bool>               SwitchAccountAsync(string model, CancellationToken ct)        => SwitchAccountForSiteAsync(GetSite(model), ct);
+
+    private async Task LogoutSiteAsync(SiteState site)
+    {
+        await EnsureInitializedAsync(site);
+        site.IsLoggedIn = false;
+
+        await _dispatcher.InvokeAsync(async () =>
+        {
+            if (site.WebView?.CoreWebView2 != null)
+            {
+                // Delete all cookies
+                site.WebView.CoreWebView2.CookieManager.DeleteAllCookies();
+
+                // Clear browsing profile data (cookies, storage, cache)
+                try
+                {
+                    await site.WebView.CoreWebView2.Profile.ClearBrowsingDataAsync(
+                        CoreWebView2BrowsingDataKinds.Cookies |
+                        CoreWebView2BrowsingDataKinds.AllDomStorage |
+                        CoreWebView2BrowsingDataKinds.DiskCache);
+                }
+                catch { }
+
+                try
+                {
+                    await site.WebView.ExecuteScriptAsync("try { localStorage.clear(); sessionStorage.clear(); } catch(e){}");
+                }
+                catch { }
+
+                site.WebView.CoreWebView2.Navigate(site.Config.Url);
+            }
+        });
+    }
+
+    private async Task<bool> SwitchAccountForSiteAsync(SiteState site, CancellationToken ct)
+    {
+        await LogoutSiteAsync(site);
+        return await ShowLoginForSiteAsync(site, ct);
+    }
 
     // ═════════════════════════════════════════════════════════════════════════
     // Init — WebView2 lives in a tiny off-screen host Window

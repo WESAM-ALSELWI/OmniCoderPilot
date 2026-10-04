@@ -41,6 +41,7 @@ public partial class SidebarViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<ModelItemViewModel> _models = new();
     [ObservableProperty] private ModelItemViewModel? _selectedModel;
     [ObservableProperty] private string _currentProviderLabel = "💻 Local";
+    [ObservableProperty] private bool _isWebChatModelSelected;
     [ObservableProperty] private bool _isFolderBrowserOpen;
     [ObservableProperty] private FolderBrowserViewModel? _folderBrowser;
 
@@ -61,6 +62,38 @@ public partial class SidebarViewModel : ObservableObject
         {
             _events.Publish(new ModelSelectedEvent(value.Name));
             CurrentProviderLabel = $"{value.Icon} {value.Provider} ({value.DisplayName})";
+            IsWebChatModelSelected = value.Name.StartsWith("webchat/", StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            IsWebChatModelSelected = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SwitchAccountAsync()
+    {
+        if (SelectedModel is null || !IsWebChatModelSelected) return;
+        var webChat = _services.GetService<IWebChatService>();
+        if (webChat is not null)
+        {
+            await webChat.SwitchAccountAsync(SelectedModel.Name, CancellationToken.None);
+        }
+    }
+
+    [RelayCommand]
+    private async Task LogoutWebChatAsync()
+    {
+        if (SelectedModel is null || !IsWebChatModelSelected) return;
+        var webChat = _services.GetService<IWebChatService>();
+        if (webChat is not null)
+        {
+            await webChat.LogoutAsync(SelectedModel.Name);
+            System.Windows.MessageBox.Show(
+                $"Logged out of {SelectedModel.DisplayName}. The session has been cleared.",
+                "Web Chat Logged Out",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
         }
     }
 

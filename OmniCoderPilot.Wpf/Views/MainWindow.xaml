@@ -315,6 +315,25 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
+
+                                    <!-- Web Chat Account Controls (Visible when webchat model selected) -->
+                                    <Button Command="{Binding Sidebar.SwitchAccountCommand}"
+                                            Visibility="{Binding Sidebar.IsWebChatModelSelected, Converter={StaticResource BoolToVis}}"
+                                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="1" Foreground="{DynamicResource AccentBrush}"
+                                            Padding="8,3" FontSize="11.5" Margin="6,0,0,0" Cursor="Hand"
+                                            ToolTip="Switch account or log in with another account for this Web Chat">
+                                        <TextBlock Text="&#x1F464; Switch Account" FontSize="11" FontWeight="SemiBold"/>
+                                    </Button>
+
+                                    <Button Command="{Binding Sidebar.LogoutWebChatCommand}"
+                                            Visibility="{Binding Sidebar.IsWebChatModelSelected, Converter={StaticResource BoolToVis}}"
+                                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="1" Foreground="#FFEF4444"
+                                            Padding="6,3" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
+                                            ToolTip="Log out of this Web Chat account">
+                                        <TextBlock Text="&#x1F6AA; Logout" FontSize="11"/>
+                                    </Button>
                                 </StackPanel>
 
                                 <Button Grid.Column="2" Padding="6,4" FontSize="14"

@@ -33,4 +33,14 @@ public interface IWebChatService
 
     /// <summary>Display name for a given model name, e.g. "ChatGPT Web" for "webchat/chatgpt".</summary>
     string GetDisplayNameFor(string modelName);
+
+    /// <summary>
+    /// Log out the account for the specified model/site (clears cookies, session, localStorage).
+    /// </summary>
+    Task LogoutAsync(string modelName);
+
+    /// <summary>
+    /// Log out the current account, then open the visible login window for the user to log in with a different account.
+    /// </summary>
+    Task<bool> SwitchAccountAsync(string modelName, CancellationToken ct);
 }

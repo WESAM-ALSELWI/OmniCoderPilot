@@ -22,6 +22,11 @@ public partial class SettingsViewModel : ObservableObject
     private readonly OpenAiCompatibleClient _deepseek;
     private readonly OpenAiCompatibleClient _openAi;
     private readonly OpenAiCompatibleClient _custom;
+    private readonly IWebChatService _webChat;
+
+    // Web Chat Status
+    [ObservableProperty] private string _chatGptStatus = "Checking...";
+    [ObservableProperty] private string _deepSeekWebStatus = "Checking...";
 
     // OpenRouter
     [ObservableProperty] private string _openRouterApiKey = "";
@@ -63,7 +68,8 @@ public partial class SettingsViewModel : ObservableObject
         [FromKeyedServices("Groq")] OpenAiCompatibleClient groq,
         [FromKeyedServices("DeepSeek")] OpenAiCompatibleClient deepseek,
         [FromKeyedServices("OpenAI")] OpenAiCompatibleClient openAi,
-        [FromKeyedServices("Custom")] OpenAiCompatibleClient custom)
+        [FromKeyedServices("Custom")] OpenAiCompatibleClient custom,
+        IWebChatService webChat)
     {
         _services = services;
         _config = config;
@@ -72,6 +78,9 @@ public partial class SettingsViewModel : ObservableObject
         _deepseek = deepseek;
         _openAi = openAi;
         _custom = custom;
+        _webChat = webChat;
+
+        RefreshWebChatStatus();
 
         // OpenRouter
         OpenRouterApiKey = _openRouter.ApiKey;
@@ -119,6 +128,52 @@ public partial class SettingsViewModel : ObservableObject
         // Ollama & Brave
         OllamaBaseUrl = _config["Ollama:BaseUrl"] ?? "http://127.0.0.1:11434";
         BraveSearchApiKey = _config["BraveSearch:ApiKey"] ?? "";
+    }
+
+    public void RefreshWebChatStatus()
+    {
+        ChatGptStatus = _webChat.IsLoggedInFor("webchat/chatgpt") ? "✅ Logged In" : "⚪ Not Logged In";
+        DeepSeekWebStatus = _webChat.IsLoggedInFor("webchat/deepseek") ? "✅ Logged In" : "⚪ Not Logged In";
+    }
+
+    [RelayCommand]
+    private async Task SwitchChatGptAccountAsync()
+    {
+        StatusMessage = "Opening ChatGPT login window to switch account...";
+        IsSuccess = true;
+        var ok = await _webChat.SwitchAccountAsync("webchat/chatgpt", CancellationToken.None);
+        RefreshWebChatStatus();
+        StatusMessage = ok ? "✅ Logged into ChatGPT with new account!" : "⚠️ ChatGPT login window closed.";
+        IsSuccess = ok;
+    }
+
+    [RelayCommand]
+    private async Task LogoutChatGptAsync()
+    {
+        await _webChat.LogoutAsync("webchat/chatgpt");
+        RefreshWebChatStatus();
+        StatusMessage = "✅ Logged out of ChatGPT Web. Session cleared.";
+        IsSuccess = true;
+    }
+
+    [RelayCommand]
+    private async Task SwitchDeepSeekAccountAsync()
+    {
+        StatusMessage = "Opening DeepSeek login window to switch account...";
+        IsSuccess = true;
+        var ok = await _webChat.SwitchAccountAsync("webchat/deepseek", CancellationToken.None);
+        RefreshWebChatStatus();
+        StatusMessage = ok ? "✅ Logged into DeepSeek with new account!" : "⚠️ DeepSeek login window closed.";
+        IsSuccess = ok;
+    }
+
+    [RelayCommand]
+    private async Task LogoutDeepSeekAsync()
+    {
+        await _webChat.LogoutAsync("webchat/deepseek");
+        RefreshWebChatStatus();
+        StatusMessage = "✅ Logged out of DeepSeek Web. Session cleared.";
+        IsSuccess = true;
     }
 
     [RelayCommand]
