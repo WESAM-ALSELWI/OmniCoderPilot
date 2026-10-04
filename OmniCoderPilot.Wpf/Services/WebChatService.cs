@@ -344,7 +344,9 @@ public sealed class WebChatService : IWebChatService, IDisposable
     private async Task<string> TypeMessageAsync(SiteState site, string message)
     {
         var msg = JsStr(message);
-        var js = "(function(){"
+
+        // 1. Focus input and clear previous content
+        var prepJs = "(function(){"
             + "  var input = document.querySelector('#prompt-textarea')"
             + "           || document.querySelector('#chat-input')"
             + "           || document.querySelector('div[id=\"prompt-textarea\"]')"
@@ -359,23 +361,59 @@ public sealed class WebChatService : IWebChatService, IDisposable
             + "    else { input.value = " + msg + "; }"
             + "    input.dispatchEvent(new Event('input',  { bubbles: true }));"
             + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
+            + "    return 'textarea-ok';"
             + "  } else {"
-            // ContentEditable (ChatGPT)
-            + "    document.execCommand('selectAll', false, null);"
-            + "    document.execCommand('delete',    false, null);"
-            + "    var inserted = document.execCommand('insertText', false, " + msg + ");"
-            + "    var current = (input.innerText || input.textContent || '').trim();"
-            + "    if (!inserted || current.length === 0) {"
-            + "      input.innerHTML = '<p>' + " + msg + ".replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';"
-            + "    }"
-            + "    try { input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: " + msg + " })); } catch(e){}"
-            + "    try { input.dispatchEvent(new InputEvent('input',       { bubbles: true, cancelable: true, inputType: 'insertText', data: " + msg + " })); } catch(e){}"
-            + "    input.dispatchEvent(new Event('input',  { bubbles: true }));"
-            + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
+            + "    var sel = window.getSelection();"
+            + "    var range = document.createRange();"
+            + "    range.selectNodeContents(input);"
+            + "    sel.removeAllRanges();"
+            + "    sel.addRange(range);"
+            + "    document.execCommand('delete', false, null);"
+            + "    return 'contenteditable-ready';"
             + "  }"
-            + "  return 'ok';"
             + "})()";
-        return await ExecScriptStringAsync(site, js);
+
+        var prepRes = await ExecScriptStringAsync(site, prepJs);
+        if (prepRes == "no-input") return "no-input";
+        if (prepRes == "textarea-ok") return "ok";
+
+        // 2. For contenteditable (ChatGPT), use CDP Input.insertText for native OS-level trusted input
+        bool cdpSuccess = false;
+        try
+        {
+            if (site.WebView?.CoreWebView2 != null)
+            {
+                var insertJson = JsonSerializer.Serialize(new { text = message });
+                await _dispatcher.InvokeAsync(async () =>
+                {
+                    await site.WebView.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText", insertJson);
+                });
+                cdpSuccess = true;
+            }
+        }
+        catch { }
+
+        // 3. Fallback / verification in JS
+        var verifyJs = "(function(){"
+            + "  var input = document.querySelector('#prompt-textarea, div[contenteditable=\"true\"]');"
+            + "  if (!input) return 'no-input';"
+            + "  var current = (input.innerText || input.textContent || '').trim();"
+            + "  if (current.length > 0) return 'ok';"
+            + "  try {"
+            + "    var dt = new DataTransfer();"
+            + "    dt.setData('text/plain', " + msg + ");"
+            + "    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));"
+            + "  } catch(e) {}"
+            + "  current = (input.innerText || input.textContent || '').trim();"
+            + "  if (current.length > 0) return 'ok';"
+            + "  document.execCommand('insertText', false, " + msg + ");"
+            + "  try { input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: " + msg + " })); } catch(e){}"
+            + "  input.dispatchEvent(new Event('input', { bubbles: true }));"
+            + "  return (input.innerText || input.textContent || '').trim().length > 0 ? 'ok' : 'empty';"
+            + "})()";
+
+        var verifyRes = await ExecScriptStringAsync(site, verifyJs);
+        return verifyRes == "empty" ? (cdpSuccess ? "ok" : "empty") : verifyRes;
     }
 
     private async Task<bool> SubmitMessageAsync(SiteState site, CancellationToken ct)
@@ -383,23 +421,59 @@ public sealed class WebChatService : IWebChatService, IDisposable
         // Poll for up to 3 seconds for the send button to become enabled and click it
         for (int i = 0; i < 15; i++)
         {
-            var js = "(function(){"
+            var clickJs = "(function(){"
                 + "  var btn = document.querySelector('button[data-testid=\"send-button\"]')"
+                + "          || document.querySelector('button[data-testid=\"composer-button-send\"]')"
                 + "          || document.querySelector('button[data-testid=\"fruitjuice-send-button\"]')"
                 + "          || document.querySelector('button[aria-label=\"Send prompt\"]')"
                 + "          || document.querySelector('button[aria-label=\"Send message\"]')"
                 + "          || document.querySelector('button[aria-label*=\"Send\"]')"
+                + "          || document.querySelector('button[aria-label*=\"send\"]')"
                 + "          || document.querySelector('form button[type=\"submit\"]');"
+                + "  if (!btn) {"
+                + "    var composer = document.querySelector('#composer-background, form, div[class*=\"composer\"]');"
+                + "    if (composer) {"
+                + "      var btns = Array.from(composer.querySelectorAll('button'));"
+                + "      for (var b of btns) {"
+                + "        var label = (b.getAttribute('aria-label') || '').toLowerCase();"
+                + "        var tid = (b.getAttribute('data-testid') || '').toLowerCase();"
+                + "        if (label.includes('attach') || label.includes('voice') || label.includes('speech') ||"
+                + "            tid.includes('attach') || tid.includes('speech') || tid.includes('voice')) continue;"
+                + "        if (b.querySelector('svg') || b.textContent.trim().length > 0) { btn = b; break; }"
+                + "      }"
+                + "    }"
+                + "  }"
                 + "  if (btn && !btn.disabled) { btn.click(); return 'clicked'; }"
                 + "  if (btn && btn.disabled)  { return 'disabled'; }"
                 + "  return 'not-found';"
                 + "})()";
-            var r = await ExecScriptStringAsync(site, js);
-            if (r == "clicked") return true;
+
+            var clickRes = await ExecScriptStringAsync(site, clickJs);
+            if (clickRes == "clicked")
+            {
+                await Task.Delay(300, ct);
+                return true;
+            }
             await Task.Delay(200, ct);
         }
 
-        // Fallback: send Enter key to the input element
+        // If button was not clicked, dispatch native Enter via CDP
+        try
+        {
+            if (site.WebView?.CoreWebView2 != null)
+            {
+                await _dispatcher.InvokeAsync(async () =>
+                {
+                    await site.WebView.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                        "{\"type\":\"rawKeyDown\",\"windowsVirtualKeyCode\":13,\"code\":\"Enter\",\"key\":\"Enter\",\"unmodifiedText\":\"\\r\",\"text\":\"\\r\"}");
+                    await site.WebView.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                        "{\"type\":\"keyUp\",\"windowsVirtualKeyCode\":13,\"code\":\"Enter\",\"key\":\"Enter\"}");
+                });
+            }
+        }
+        catch { }
+
+        // Fallback: send Enter key to the input element via JS
         var enterJs = "(function(){"
             + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
             + "  if (inp) {"
@@ -409,8 +483,21 @@ public sealed class WebChatService : IWebChatService, IDisposable
             + "  }"
             + "  return 'no-input';"
             + "})()";
-        var enterRes = await ExecScriptStringAsync(site, enterJs);
-        return enterRes == "enter";
+        await ExecScriptStringAsync(site, enterJs);
+
+        // Verify whether message was actually submitted
+        await Task.Delay(500, ct);
+        var checkSubmittedJs = "(function(){"
+            + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
+            + "  var text = (inp ? (inp.value || inp.innerText || inp.textContent || '') : '').trim();"
+            + "  var stop = document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]');"
+            + "  if (stop) return 'submitted-generating';"
+            + "  if (text.length === 0) return 'submitted-empty';"
+            + "  return 'still-filled';"
+            + "})()";
+
+        var status = await ExecScriptStringAsync(site, checkSubmittedJs);
+        return status != "still-filled";
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -510,13 +597,14 @@ public sealed class WebChatService : IWebChatService, IDisposable
         var snap = snapshotCount.ToString();
         var js = "(function(){"
             + "  var snap = " + snap + ";"
+            + "  var isGen = !!document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]');"
 
             // ChatGPT: if there is only 1 user message and 1 assistant message, reset snap to 0
             + "  var cg = document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
             + "  var userMsgs = document.querySelectorAll('[data-message-author-role=\"user\"]');"
             + "  if (userMsgs.length === 1 && cg.length === 1) { snap = 0; }"
 
-            + "  if (cg.length > snap) {"
+            + "  if (cg.length > snap || (isGen && cg.length >= snap && cg.length > 0)) {"
             + "    var el = cg[cg.length - 1];"
             + "    var textEl = el.querySelector('.markdown, .prose, [class*=\"markdown\"], [class*=\"whitespace-pre-wrap\"]') || el;"
             + "    var t = (textEl.innerText || textEl.textContent || '').trim();"
@@ -525,7 +613,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
             // DeepSeek
             + "  var ds = document.querySelectorAll('.ds-markdown, [class*=\"ds-markdown\"]');"
-            + "  if (ds.length > snap) {"
+            + "  if (ds.length > snap || (isGen && ds.length >= snap && ds.length > 0)) {"
             + "    var el = ds[ds.length - 1];"
             + "    var t = (el.innerText || el.textContent || '').trim();"
             + "    if (t.length > 0) return t;"
@@ -533,7 +621,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
             // Generic fallback
             + "  var gen = document.querySelectorAll('[class*=\"assistant\"], [class*=\"bot-msg\"], [class*=\"ai-message\"]');"
-            + "  if (gen.length > snap) {"
+            + "  if (gen.length > snap || (isGen && gen.length >= snap && gen.length > 0)) {"
             + "    var el = gen[gen.length - 1];"
             + "    var t = (el.innerText || el.textContent || '').trim();"
             + "    if (t.length > 0) return t;"

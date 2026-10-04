@@ -106,23 +106,23 @@ public sealed class WebChatClient(IWebChatService webChat) : IOllamaClient
             if (!string.IsNullOrEmpty(workspaceInfo))
                 sb.AppendLine(workspaceInfo);
             sb.AppendLine($"Task: {userTask}\n");
-            sb.AppendLine("You will provide the reasoning, planning, decisions, and next actions. I will act as your execution runtime on my local machine and execute any tools you need.");
-            sb.AppendLine("When you want me to perform an action, format it as a simple JSON block in your response like this:");
+            sb.AppendLine("You will provide the reasoning, planning, and decisions. My software is your local execution runtime and will execute tools automatically.");
+            sb.AppendLine("CRITICAL INSTRUCTION: When you need to inspect the workspace, read files, edit code, or run commands, you MUST output a simple JSON block in your response:");
             sb.AppendLine("```json");
-            sb.AppendLine("{\"tool\": \"ReadFile\", \"arguments\": {\"relativePath\": \"src/Program.cs\"}}");
+            sb.AppendLine("{\"tool\": \"ListDirectory\", \"arguments\": {\"relativePath\": \"\"}}");
             sb.AppendLine("```\n");
             sb.AppendLine("Available tools:");
-            sb.AppendLine("- ReadFile: {\"relativePath\": \"path\"}");
+            sb.AppendLine("- ListDirectory: {\"relativePath\": \"\"} (list files in workspace or folder)");
+            sb.AppendLine("- ReadFile: {\"relativePath\": \"path\"} (read a file)");
             sb.AppendLine("- EditFile: {\"relativePath\": \"path\", \"targetContent\": \"exact lines to replace\", \"replacementContent\": \"new lines\"}");
             sb.AppendLine("- WriteFile: {\"relativePath\": \"path\", \"content\": \"full content\"}");
-            sb.AppendLine("- ExecuteCommand: {\"command\": \"dotnet test\"}");
-            sb.AppendLine("- ListDirectory: {\"relativePath\": \"src\"}");
+            sb.AppendLine("- ExecuteCommand: {\"command\": \"dotnet build\"}");
             sb.AppendLine("- FindFiles: {\"pattern\": \"*.cs\"}");
             sb.AppendLine("- SearchFiles: {\"query\": \"SearchTerm\"}");
             sb.AppendLine("- GitStatus: {}");
             sb.AppendLine("- GitDiff: {}");
-            sb.AppendLine("\nYou can explain your thoughts, and specify the action to run. I will run it and give you the output so we can proceed. If no action is needed, just answer directly.");
-            sb.AppendLine("Please analyze the task, plan the steps, and tell me what action we should perform first.");
+            sb.AppendLine("\nRule: Explain your thinking briefly, then immediately provide the tool call JSON block. Do NOT ask me to run commands manually in my terminal — output the JSON block so my software can run it automatically. If the task is purely conversational or already completed, provide your final answer directly without any JSON.");
+            sb.AppendLine("Please analyze the task, plan the steps, and output the first tool JSON block to run.");
             return sb.ToString();
         }
         else
@@ -167,14 +167,13 @@ public sealed class WebChatClient(IWebChatService webChat) : IOllamaClient
                         sb.AppendLine("----------------------------\n");
                     }
                 }
+                sb.AppendLine("\nWhat is our next step? (If another action is needed, output the tool JSON block. If finished, provide the final answer.)");
             }
             else
             {
-                var lastUser = messages.LastOrDefault(m => m.Role == "user")?.Content ?? "";
-                sb.AppendLine(lastUser);
+                sb.AppendLine("Please specify the next action by outputting a tool JSON block (e.g. ListDirectory, ReadFile, or ExecuteCommand) so my software can run it for you. If you are finished, provide your final response.");
             }
 
-            sb.AppendLine("\nWhat is our next step?");
             return sb.ToString();
         }
     }

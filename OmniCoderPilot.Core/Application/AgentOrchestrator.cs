@@ -295,8 +295,8 @@ public sealed class AgentOrchestrator(
                 {
                     state.ConsecutiveNoTools++;
 
-                    // WebChat models (or conversational tasks where tools aren't needed)
-                    if (isWebChat || (!state.ExecutedAnyTool && !LooksLikeWorkspaceTask(request.Prompt)))
+                    // Conversational tasks where tools aren't needed, or WebChat after executing tools
+                    if ((isWebChat && state.ExecutedAnyTool) || (!state.ExecutedAnyTool && !LooksLikeWorkspaceTask(request.Prompt)))
                     {
                         var final = visibleText.Trim();
                         if (string.IsNullOrWhiteSpace(final) && state.ExecutedAnyTool)
@@ -1645,6 +1645,34 @@ public sealed class AgentOrchestrator(
             {
                 var key = $"{call.Name}\n{call.Args.ToJsonString()}";
                 if (seen.Add(key)) yield return call;
+            }
+        }
+
+        if (seen.Count == 0)
+        {
+            // Fallback: detect bash / powershell / cmd / sh code blocks if model suggested a shell command
+            var cmdPattern = new Regex(
+                @"```(?:bash|sh|powershell|pwsh|cmd|shell)\s*\n([\s\S]*?)\n\s*```",
+                RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            foreach (Match m in cmdPattern.Matches(text))
+            {
+                var cmd = m.Groups[1].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(cmd) && !cmd.Contains('\n'))
+                {
+                    var cmdLower = cmd.ToLowerInvariant();
+                    if (cmdLower is "dir" or "ls" or "get-childitem" or "dir /b" or "ls -la" or "ls -l")
+                    {
+                        var args = new JsonObject { ["relativePath"] = "" };
+                        var key = $"ListDirectory\n{args.ToJsonString()}";
+                        if (seen.Add(key)) yield return ("ListDirectory", args);
+                    }
+                    else
+                    {
+                        var args = new JsonObject { ["command"] = cmd };
+                        var key = $"ExecuteCommand\n{args.ToJsonString()}";
+                        if (seen.Add(key)) yield return ("ExecuteCommand", args);
+                    }
+                }
             }
         }
     }
