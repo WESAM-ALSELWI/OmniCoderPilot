@@ -180,10 +180,6 @@ public sealed class AgentOrchestrator(
                         if (!string.IsNullOrEmpty(chunk.Content))
                         {
                             fullResponse.Append(chunk.Content);
-                            if (isWebChat)
-                            {
-                                await sink.TokenAsync(request.ConnectionId, request.ConversationId, chunk.Content);
-                            }
                         }
 
                         // Collect native tool_calls from streaming response
@@ -273,17 +269,8 @@ public sealed class AgentOrchestrator(
                 // Strip <think> from visible text
                 var visibleText = StripThinking(textContent, out var thinking);
 
-                // ALWAYS send thinking/reasoning as inline collapsible step only when actual thinking exists
-                // or when tool calls exist and text is a pre-tool thought.
-                var thinkingToShow = !string.IsNullOrWhiteSpace(thinking)
-                    ? Trim(thinking, 1200)
-                    : (toolCalls.Count > 0 && !isWebChat ? Trim(visibleText, 1200) : null);
-                if (!string.IsNullOrWhiteSpace(thinkingToShow))
-                    await sink.ThinkingStepAsync(request.ConnectionId, request.ConversationId,
-                        thinkingToShow, (int)llmStart.ElapsedMilliseconds, state.TurnCount, AgentLoopPhase.Think);
-
                 // ── Fallback: parse tool calls from text if native returned none ──
-                if (toolCalls.Count == 0 && !string.IsNullOrWhiteSpace(visibleText) && !isWebChat)
+                if (toolCalls.Count == 0 && !string.IsNullOrWhiteSpace(visibleText))
                 {
                     var parsed = ParseToolCallsFromText(visibleText).ToList();
                     if (parsed.Count > 0)
@@ -292,6 +279,16 @@ public sealed class AgentOrchestrator(
                             Guid.NewGuid().ToString(), p.Name, p.Args)).ToList();
                     }
                 }
+
+                // ALWAYS send thinking/reasoning as inline collapsible step only when actual thinking exists
+                // or when tool calls exist and text is a pre-tool thought.
+                var preToolThought = StripToolJsonFromText(visibleText);
+                var thinkingToShow = !string.IsNullOrWhiteSpace(thinking)
+                    ? Trim(thinking, 1200)
+                    : (toolCalls.Count > 0 && !string.IsNullOrWhiteSpace(preToolThought) ? Trim(preToolThought, 1200) : null);
+                if (!string.IsNullOrWhiteSpace(thinkingToShow))
+                    await sink.ThinkingStepAsync(request.ConnectionId, request.ConversationId,
+                        thinkingToShow, (int)llmStart.ElapsedMilliseconds, state.TurnCount, AgentLoopPhase.Think);
 
                 // ── No tool calls path ────────────────────────────────────────
                 if (toolCalls.Count == 0)
@@ -302,11 +299,12 @@ public sealed class AgentOrchestrator(
                     if (isWebChat || (!state.ExecutedAnyTool && !LooksLikeWorkspaceTask(request.Prompt)))
                     {
                         var final = visibleText.Trim();
-                        finalAnswer.Append(final);
-                        if (!isWebChat)
+                        if (string.IsNullOrWhiteSpace(final) && state.ExecutedAnyTool)
                         {
-                            await sink.TokenAsync(request.ConnectionId, request.ConversationId, final);
+                            final = BuildDeterministicFinalSummary(allToolResults, request.Prompt);
                         }
+                        finalAnswer.Append(final);
+                        await sink.TokenAsync(request.ConnectionId, request.ConversationId, final);
                         break;
                     }
 
@@ -626,7 +624,16 @@ public sealed class AgentOrchestrator(
     private async Task<ToolResult> RunSingleToolAsync(
         OllamaToolCall call, ToolExecutionContext ctx, ChatRequest request)
     {
-        if (!_tools.TryGetValue(call.Name, out var tool))
+        var toolName = call.Name;
+        if (!_tools.TryGetValue(toolName, out var tool))
+        {
+            var normalized = toolName.Replace("_", "");
+            tool = _tools.Values.FirstOrDefault(t =>
+                string.Equals(t.Name, toolName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(t.Name, normalized, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (tool is null)
         {
             var available = string.Join(", ", _tools.Keys.OrderBy(k => k));
             var unknown = new ToolResult(call.Name, false,
@@ -1621,7 +1628,7 @@ public sealed class AgentOrchestrator(
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         var fencePattern = new Regex(
-            @"```(?:tool_call|json)\s*\n([\s\S]*?)\n```",
+            @"```(?:tool_call|tool|json)?\s*\n([\s\S]*?)\n\s*```",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
         foreach (Match m in fencePattern.Matches(text))
         {
@@ -1665,15 +1672,34 @@ public sealed class AgentOrchestrator(
         if (string.IsNullOrWhiteSpace(name)) yield break;
 
         var argsNode = obj["arguments"] ?? obj["args"] ?? obj["input"] ?? obj["parameters"];
-        if (argsNode is null) yield break;
 
         JsonObject args;
-        if (argsNode is JsonObject o) args = JsonNode.Parse(o.ToJsonString())!.AsObject();
+        if (argsNode is JsonObject o)
+        {
+            args = JsonNode.Parse(o.ToJsonString())!.AsObject();
+        }
         else if (argsNode is JsonValue v && v.TryGetValue<string>(out var s))
         {
             try { args = JsonNode.Parse(s)?.AsObject() ?? new JsonObject(); } catch { args = new JsonObject(); }
         }
-        else args = new JsonObject();
+        else if (argsNode is null)
+        {
+            // Flat arguments: e.g. {"tool": "ReadFile", "relativePath": "src/App.cs"}
+            args = new JsonObject();
+            foreach (var (k, val) in obj)
+            {
+                if (k.Equals("name", StringComparison.OrdinalIgnoreCase) ||
+                    k.Equals("tool", StringComparison.OrdinalIgnoreCase) ||
+                    k.Equals("toolName", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (val is not null)
+                    args[k] = JsonNode.Parse(val.ToJsonString());
+            }
+        }
+        else
+        {
+            args = new JsonObject();
+        }
 
         yield return (name!, args);
     }
@@ -1714,6 +1740,14 @@ public sealed class AgentOrchestrator(
         }
         thinking = thought.ToString().Trim();
         return visible.ToString().Trim();
+    }
+
+    private static string StripToolJsonFromText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var stripped = Regex.Replace(text, @"```(?:tool_call|tool|json)?\s*\n[\s\S]*?\n\s*```", "", RegexOptions.IgnoreCase);
+        stripped = Regex.Replace(stripped, @"\{\s*""(?:tool|toolName|name)""\s*:[\s\S]*?\}", "", RegexOptions.IgnoreCase);
+        return stripped.Trim();
     }
 
     private static bool LooksLikeWorkspaceTask(string prompt)

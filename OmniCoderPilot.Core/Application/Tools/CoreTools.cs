@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.FileSystemGlobbing;
@@ -8,14 +8,74 @@ namespace OmniCoderPilot.Application.Tools;
 
 internal static class ToolJson
 {
-    public static string String(JsonObject input, string name, string fallback = "") =>
-        input[name]?.GetValue<string>() ?? fallback;
+    public static string String(JsonObject input, string name, string fallback = "")
+    {
+        if (input[name] is JsonValue node)
+        {
+            try
+            {
+                var val = node.GetValue<string>();
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+            catch { }
+        }
 
-    public static int Int(JsonObject input, string name, int fallback) =>
-        input[name]?.GetValue<int?>() ?? fallback;
+        // Common aliases fallback
+        var aliases = name switch
+        {
+            "relativePath" => new[] { "path", "file", "filePath", "filename", "relative_path", "target_file", "targetFile" },
+            "command" => new[] { "cmd", "exec", "script" },
+            "pattern" => new[] { "query", "search", "regex" },
+            "content" => new[] { "text", "body", "code" },
+            "oldText" or "oldContent" => new[] { "targetContent", "target_content", "oldContent", "old_content", "oldText", "old_text", "search" },
+            "newText" or "newContent" => new[] { "replacementContent", "replacement_content", "newContent", "new_content", "newText", "new_text", "replace" },
+            _ => Array.Empty<string>()
+        };
 
-    public static bool Bool(JsonObject input, string name, bool fallback = false) =>
-        input[name]?.GetValue<bool?>() ?? fallback;
+        foreach (var alias in aliases)
+        {
+            if (input[alias] is JsonValue aNode)
+            {
+                try
+                {
+                    var aVal = aNode.GetValue<string>();
+                    if (!string.IsNullOrEmpty(aVal)) return aVal;
+                }
+                catch { }
+            }
+        }
+
+        // Case-insensitive fallback
+        foreach (var kvp in input)
+        {
+            if (string.Equals(kvp.Key, name, StringComparison.OrdinalIgnoreCase) && kvp.Value is JsonValue kvVal)
+            {
+                try { return kvVal.GetValue<string>() ?? fallback; } catch { }
+            }
+        }
+
+        return fallback;
+    }
+
+    public static int Int(JsonObject input, string name, int fallback)
+    {
+        if (input[name] is JsonValue valNode)
+        {
+            if (valNode.TryGetValue<int>(out var iVal)) return iVal;
+            if (valNode.TryGetValue<string>(out var sVal) && int.TryParse(sVal, out var parsed)) return parsed;
+        }
+        return fallback;
+    }
+
+    public static bool Bool(JsonObject input, string name, bool fallback = false)
+    {
+        if (input[name] is JsonValue valNode)
+        {
+            if (valNode.TryGetValue<bool>(out var bVal)) return bVal;
+            if (valNode.TryGetValue<string>(out var sVal) && bool.TryParse(sVal, out var parsed)) return parsed;
+        }
+        return fallback;
+    }
 
     public static JsonObject Schema(params (string Name, string Type, string Description)[] fields)
     {

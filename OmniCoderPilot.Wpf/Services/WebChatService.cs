@@ -80,10 +80,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
     // ── IWebChatService ───────────────────────────────────────────────────────
     public Task<bool>               ShowLoginAsync(CancellationToken ct)                          => ShowLoginForSiteAsync(_sites.Values.First(), ct);
-    public IAsyncEnumerable<string> SendMessageAsync(string msg, CancellationToken ct)            => SendMessageToSiteAsync(_sites.Values.First(), msg, ct);
+    public IAsyncEnumerable<string> SendMessageAsync(string msg, CancellationToken ct)            => SendMessageToSiteAsync(_sites.Values.First(), msg, false, ct);
     public bool                     IsLoggedInFor(string model)                                   => GetSite(model).IsLoggedIn;
     public Task<bool>               ShowLoginForModelAsync(string model, CancellationToken ct)    => ShowLoginForSiteAsync(GetSite(model), ct);
-    public IAsyncEnumerable<string> SendMessageForModelAsync(string model, string msg, CancellationToken ct) => SendMessageToSiteAsync(GetSite(model), msg, ct);
+    public IAsyncEnumerable<string> SendMessageForModelAsync(string model, string msg, CancellationToken ct, bool startNewChat = false) => SendMessageToSiteAsync(GetSite(model), msg, startNewChat, ct);
     public string                   GetDisplayNameFor(string model)                               => GetSite(model).Config.DisplayName;
     public Task                     LogoutAsync(string model)                                     => LogoutSiteAsync(GetSite(model));
     public Task<bool>               SwitchAccountAsync(string model, CancellationToken ct)        => SwitchAccountForSiteAsync(GetSite(model), ct);
@@ -247,7 +247,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
     // Send + Stream
     // ═════════════════════════════════════════════════════════════════════════
     private async IAsyncEnumerable<string> SendMessageToSiteAsync(
-        SiteState site, string message,
+        SiteState site, string message, bool startNewChat,
         [EnumeratorCancellation] CancellationToken ct)
     {
         await EnsureInitializedAsync(site);
@@ -262,7 +262,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
             }
         }
 
-        await NavigateToNewChatAsync(site, ct);
+        if (startNewChat)
+        {
+            await NavigateToNewChatAsync(site, ct);
+        }
 
         bool inputReady = await WaitForInputAsync(site, ct, timeoutSeconds: 15);
         if (!inputReady)

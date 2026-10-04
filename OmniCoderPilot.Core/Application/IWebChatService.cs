@@ -29,7 +29,7 @@ public interface IWebChatService
     /// <summary>
     /// Send a message to the site that matches <paramref name="modelName"/> and stream back tokens.
     /// </summary>
-    IAsyncEnumerable<string> SendMessageForModelAsync(string modelName, string message, CancellationToken ct);
+    IAsyncEnumerable<string> SendMessageForModelAsync(string modelName, string message, CancellationToken ct, bool startNewChat = false);
 
     /// <summary>Display name for a given model name, e.g. "ChatGPT Web" for "webchat/chatgpt".</summary>
     string GetDisplayNameFor(string modelName);
