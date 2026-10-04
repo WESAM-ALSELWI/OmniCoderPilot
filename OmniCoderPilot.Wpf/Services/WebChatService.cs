@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Threading;
@@ -222,7 +223,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
         await NavigateToNewChatAsync(site, ct);
 
-        bool inputReady = await WaitForInputAsync(site, ct, timeoutSeconds: 12);
+        bool inputReady = await WaitForInputAsync(site, ct, timeoutSeconds: 15);
         if (!inputReady)
         {
             yield return $"⚠️ Timed out waiting for {site.Config.DisplayName} input box.";
@@ -239,8 +240,13 @@ public sealed class WebChatService : IWebChatService, IDisposable
             yield break;
         }
 
-        await Task.Delay(500, ct);
-        await SubmitMessageAsync(site);
+        await Task.Delay(400, ct);
+        var submitted = await SubmitMessageAsync(site, ct);
+        if (!submitted)
+        {
+            yield return "⚠️ Could not submit message. Send button was not ready.";
+            yield break;
+        }
 
         // Stream the response (only messages appearing AFTER snapshot)
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true });
@@ -251,15 +257,26 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
     private async Task NavigateToNewChatAsync(SiteState site, CancellationToken ct)
     {
-        var js = "(function(){"
-               + "  var btn = document.querySelector('button[aria-label=\"New chat\"]') || document.querySelector('a[href=\"/\"]');"
-               + "  if (btn) { btn.click(); return 'clicked'; }"
-               + "  return 'none';"
-               + "})()";
-        var r = await ExecScriptStringAsync(site, js);
-        if (r != "clicked")
+        var currentUrl = "";
+        await _dispatcher.InvokeAsync(() => currentUrl = site.WebView?.Source?.ToString() ?? "");
+
+        // If we are currently inside an existing conversation (e.g. /c/<id>), navigate to base URL
+        if (!currentUrl.TrimEnd('/').Equals(site.Config.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        {
             await _dispatcher.InvokeAsync(() => site.WebView!.CoreWebView2.Navigate(site.Config.Url));
-        await Task.Delay(2500, ct);
+            await Task.Delay(2500, ct);
+        }
+        else
+        {
+            // Already at base URL, click "New chat" button if present
+            var js = "(function(){"
+                   + "  var btn = document.querySelector('button[aria-label=\"New chat\"], a[href=\"/\"], a[data-testid=\"new-chat-button\"]');"
+                   + "  if (btn) { btn.click(); return 'clicked'; }"
+                   + "  return 'none';"
+                   + "})()";
+            await ExecScriptStringAsync(site, js);
+            await Task.Delay(1500, ct);
+        }
     }
 
     private async Task<bool> WaitForInputAsync(SiteState site, CancellationToken ct, int timeoutSeconds)
@@ -268,14 +285,14 @@ public sealed class WebChatService : IWebChatService, IDisposable
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
             var js = "(function(){"
-                   + "  var el = document.querySelector('#chat-input')"
-                   + "         || document.querySelector('#prompt-textarea')"
+                   + "  var el = document.querySelector('#prompt-textarea')"
+                   + "         || document.querySelector('#chat-input')"
                    + "         || document.querySelector('textarea[placeholder]')"
                    + "         || document.querySelector('div[contenteditable=\"true\"]');"
                    + "  return el ? 'ready' : 'wait';"
                    + "})()";
             if (await ExecScriptStringAsync(site, js) == "ready") return true;
-            await Task.Delay(700, ct);
+            await Task.Delay(600, ct);
         }
         return false;
     }
@@ -284,11 +301,11 @@ public sealed class WebChatService : IWebChatService, IDisposable
     {
         var msg = JsStr(message);
         var js = "(function(){"
-            + "  var input = document.querySelector('#chat-input')"
-            + "           || document.querySelector('#prompt-textarea')"
+            + "  var input = document.querySelector('#prompt-textarea')"
+            + "           || document.querySelector('#chat-input')"
             + "           || document.querySelector('div[id=\"prompt-textarea\"]')"
-            + "           || document.querySelector('textarea[placeholder]')"
-            + "           || document.querySelector('div[contenteditable=\"true\"]');"
+            + "           || document.querySelector('div[contenteditable=\"true\"]')"
+            + "           || document.querySelector('textarea');"
             + "  if (!input) return 'no-input';"
             + "  input.focus();"
             + "  if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {"
@@ -299,36 +316,57 @@ public sealed class WebChatService : IWebChatService, IDisposable
             + "    input.dispatchEvent(new Event('input',  { bubbles: true }));"
             + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
             + "  } else {"
-            // contenteditable (ChatGPT) — DataTransfer paste trick works with React
-            + "    input.focus();"
+            // ContentEditable (ChatGPT)
             + "    document.execCommand('selectAll', false, null);"
             + "    document.execCommand('delete',    false, null);"
-            + "    try {"
-            + "      var dt = new DataTransfer();"
-            + "      dt.setData('text/plain', " + msg + ");"
-            + "      input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));"
-            + "    } catch(e) { document.execCommand('insertText', false, " + msg + "); }"
+            + "    var inserted = document.execCommand('insertText', false, " + msg + ");"
+            + "    var current = (input.innerText || input.textContent || '').trim();"
+            + "    if (!inserted || current.length === 0) {"
+            + "      input.innerHTML = '<p>' + " + msg + ".replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';"
+            + "    }"
+            + "    try { input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: " + msg + " })); } catch(e){}"
+            + "    try { input.dispatchEvent(new InputEvent('input',       { bubbles: true, cancelable: true, inputType: 'insertText', data: " + msg + " })); } catch(e){}"
+            + "    input.dispatchEvent(new Event('input',  { bubbles: true }));"
+            + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
             + "  }"
             + "  return 'ok';"
             + "})()";
         return await ExecScriptStringAsync(site, js);
     }
 
-    private async Task SubmitMessageAsync(SiteState site)
+    private async Task<bool> SubmitMessageAsync(SiteState site, CancellationToken ct)
     {
-        var js = "(function(){"
-            + "  var btn = document.querySelector('button[data-testid=\"send-button\"]')"
-            + "          || document.querySelector('button[aria-label=\"Send message\"]')"
-            + "          || document.querySelector('button[aria-label=\"Send prompt\"]')"
-            + "          || document.querySelector('button[type=\"submit\"]');"
-            + "  if (btn && !btn.disabled) { btn.click(); return 'clicked'; }"
-            + "  var inp = document.querySelector('#chat-input')"
-            + "          || document.querySelector('#prompt-textarea')"
-            + "          || document.querySelector('div[contenteditable=\"true\"]');"
-            + "  if (inp) { inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',which:13,bubbles:true})); return 'enter'; }"
-            + "  return 'failed';"
+        // Poll for up to 3 seconds for the send button to become enabled and click it
+        for (int i = 0; i < 15; i++)
+        {
+            var js = "(function(){"
+                + "  var btn = document.querySelector('button[data-testid=\"send-button\"]')"
+                + "          || document.querySelector('button[data-testid=\"fruitjuice-send-button\"]')"
+                + "          || document.querySelector('button[aria-label=\"Send prompt\"]')"
+                + "          || document.querySelector('button[aria-label=\"Send message\"]')"
+                + "          || document.querySelector('button[aria-label*=\"Send\"]')"
+                + "          || document.querySelector('form button[type=\"submit\"]');"
+                + "  if (btn && !btn.disabled) { btn.click(); return 'clicked'; }"
+                + "  if (btn && btn.disabled)  { return 'disabled'; }"
+                + "  return 'not-found';"
+                + "})()";
+            var r = await ExecScriptStringAsync(site, js);
+            if (r == "clicked") return true;
+            await Task.Delay(200, ct);
+        }
+
+        // Fallback: send Enter key to the input element
+        var enterJs = "(function(){"
+            + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
+            + "  if (inp) {"
+            + "    inp.focus();"
+            + "    inp.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true }));"
+            + "    return 'enter';"
+            + "  }"
+            + "  return 'no-input';"
             + "})()";
-        await ExecScriptStringAsync(site, js);
+        var enterRes = await ExecScriptStringAsync(site, enterJs);
+        return enterRes == "enter";
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -338,9 +376,8 @@ public sealed class WebChatService : IWebChatService, IDisposable
     private async Task<int> GetAssistantMessageCountAsync(SiteState site)
     {
         var js = "(function(){"
-               + "  var n = document.querySelectorAll('[data-message-author-role=\"assistant\"]').length"
-               + "        + document.querySelectorAll('.ds-markdown,[class*=\"ds-markdown\"]').length;"
-               + "  return String(n);"
+               + "  var els = document.querySelectorAll('[data-message-author-role=\"assistant\"], .ds-markdown, [class*=\"ds-markdown\"]');"
+               + "  return String(els.length);"
                + "})()";
         var r = await ExecScriptStringAsync(site, js);
         return int.TryParse(r, out var n) ? n : 0;
@@ -354,7 +391,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
         {
             string lastText    = "";
             int    stableCount = 0;
-            const int stableThreshold = 5;   // 5 × 800ms = 4s stable = done
+            const int stableThreshold = 5;
             var deadline = DateTime.UtcNow.AddMinutes(4);
 
             // Wait up to 45s for new response to appear
@@ -367,14 +404,14 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
             if (string.IsNullOrWhiteSpace(lastText))
             {
-                // Diagnostic dump so we can improve selectors
+                // Diagnostic dump so we can inspect the exact page state
                 var diag = await ExecScriptStringAsync(site,
                     "(function(){"
-                    + "  var roles = Array.from(document.querySelectorAll('[data-message-author-role]'))"
-                    + "              .map(e=>e.getAttribute('data-message-author-role')).join(',');"
-                    + "  return 'url='+window.location.href.split('?')[0]"
-                    + "        +' articles='+document.querySelectorAll('article').length"
-                    + "        +' roles=['+roles+']';"
+                    + "  var roles = Array.from(document.querySelectorAll('[data-message-author-role]')).map(e=>e.getAttribute('data-message-author-role')).join(',');"
+                    + "  var asstCount = document.querySelectorAll('[data-message-author-role=\"assistant\"], .ds-markdown').length;"
+                    + "  var sendBtn = document.querySelector('button[data-testid=\"send-button\"], button[aria-label*=\"Send\"]');"
+                    + "  var btnState = sendBtn ? (sendBtn.disabled ? 'disabled' : 'enabled') : 'none';"
+                    + "  return 'url=' + window.location.href.split('?')[0] + ' asstCount=' + asstCount + ' snap=' + " + snapshotCount + " + ' btn=' + btnState + ' roles=[' + roles + ']';"
                     + "})()");
                 await writer.WriteAsync(
                     $"⚠️ No response from {site.Config.DisplayName} in 45s.\n"
@@ -385,9 +422,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
             await writer.WriteAsync(lastText, ct);
 
+            // Stream subsequent chunks as text grows
             while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
             {
-                await Task.Delay(800, ct);
+                await Task.Delay(600, ct);
                 var current = await GetLatestResponseTextAsync(site, snapshotCount);
 
                 if (current.Length > lastText.Length)
@@ -399,7 +437,22 @@ public sealed class WebChatService : IWebChatService, IDisposable
                 else
                 {
                     stableCount++;
-                    if (stableCount >= stableThreshold) break;
+
+                    // Check if generation is still happening (Stop button visible)
+                    var isGenerating = await ExecScriptBoolAsync(site,
+                        "(function(){"
+                        + "  var stop = document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]');"
+                        + "  return stop ? 'true' : 'false';"
+                        + "})()");
+
+                    if (!isGenerating && stableCount >= stableThreshold)
+                    {
+                        break;
+                    }
+                    if (isGenerating)
+                    {
+                        stableCount = 0;
+                    }
                 }
             }
         }
@@ -412,52 +465,40 @@ public sealed class WebChatService : IWebChatService, IDisposable
     {
         var snap = snapshotCount.ToString();
         var js = "(function(){"
-            + "  var snap=" + snap + ";"
+            + "  var snap = " + snap + ";"
 
-            // Strategy 1: ChatGPT — data-message-author-role="assistant"
-            + "  var cg=document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
-            + "  if(cg.length>snap){"
-            + "    var el=cg[cg.length-1];"
-            + "    var md=el.querySelector('.markdown,.prose,[class*=\"markdown\"]')||el;"
-            + "    var t=md.innerText; if(t&&t.trim()) return t.trim();"
+            // ChatGPT: if there is only 1 user message and 1 assistant message, reset snap to 0
+            + "  var cg = document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
+            + "  var userMsgs = document.querySelectorAll('[data-message-author-role=\"user\"]');"
+            + "  if (userMsgs.length === 1 && cg.length === 1) { snap = 0; }"
+
+            + "  if (cg.length > snap) {"
+            + "    var el = cg[cg.length - 1];"
+            + "    var textEl = el.querySelector('.markdown, .prose, [class*=\"markdown\"], [class*=\"whitespace-pre-wrap\"]') || el;"
+            + "    var t = (textEl.innerText || textEl.textContent || '').trim();"
+            + "    if (t.length > 0) return t;"
             + "  }"
 
-            // Strategy 2: ChatGPT — article elements
-            + "  var arts=document.querySelectorAll('article');"
-            + "  if(arts.length>snap){"
-            + "    for(var i=arts.length-1;i>=snap;i--){"
-            + "      var r=arts[i].querySelector('[data-message-author-role=\"assistant\"]');"
-            + "      if(r){var t=r.innerText; if(t&&t.trim()) return t.trim();}"
-            + "    }"
+            // DeepSeek
+            + "  var ds = document.querySelectorAll('.ds-markdown, [class*=\"ds-markdown\"]');"
+            + "  if (ds.length > snap) {"
+            + "    var el = ds[ds.length - 1];"
+            + "    var t = (el.innerText || el.textContent || '').trim();"
+            + "    if (t.length > 0) return t;"
             + "  }"
 
-            // Strategy 3: DeepSeek — .ds-markdown
-            + "  var ds=document.querySelectorAll('.ds-markdown,[class*=\"ds-markdown\"]');"
-            + "  if(ds.length>snap){"
-            + "    var t=ds[ds.length-1].innerText; if(t&&t.trim()) return t.trim();"
-            + "  }"
-
-            // Strategy 4: generic fallback
-            + "  var gen=document.querySelectorAll('[class*=\"assistant\"],[class*=\"bot-msg\"],[class*=\"ai-message\"]');"
-            + "  if(gen.length>snap){"
-            + "    var t=gen[gen.length-1].innerText; if(t&&t.trim()) return t.trim();"
+            // Generic fallback
+            + "  var gen = document.querySelectorAll('[class*=\"assistant\"], [class*=\"bot-msg\"], [class*=\"ai-message\"]');"
+            + "  if (gen.length > snap) {"
+            + "    var el = gen[gen.length - 1];"
+            + "    var t = (el.innerText || el.textContent || '').trim();"
+            + "    if (t.length > 0) return t;"
             + "  }"
 
             + "  return '';"
             + "})()";
 
-        try
-        {
-            var taskOfTask = _dispatcher.InvokeAsync(async () =>
-            {
-                var raw = await site.WebView!.ExecuteScriptAsync(js);
-                if (raw != null && raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
-                    return System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
-                return "";
-            });
-            return await taskOfTask.Task.Unwrap();
-        }
-        catch { return ""; }
+        return await ExecScriptStringAsync(site, js);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -465,13 +506,14 @@ public sealed class WebChatService : IWebChatService, IDisposable
     // ═════════════════════════════════════════════════════════════════════════
     private async Task<string> ExecScriptStringAsync(SiteState site, string js)
     {
+        if (site.WebView == null) return "";
         try
         {
             var taskOfTask = _dispatcher.InvokeAsync(async () =>
             {
-                var raw = await site.WebView!.ExecuteScriptAsync(js);
+                var raw = await site.WebView.ExecuteScriptAsync(js);
                 if (raw != null && raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
-                    return System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
+                    return JsonSerializer.Deserialize<string>(raw) ?? "";
                 return raw ?? "";
             });
             return await taskOfTask.Task.Unwrap();
@@ -481,11 +523,12 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
     private async Task<bool> ExecScriptBoolAsync(SiteState site, string js)
     {
+        if (site.WebView == null) return false;
         try
         {
             var taskOfTask = _dispatcher.InvokeAsync(async () =>
             {
-                var r = await site.WebView!.ExecuteScriptAsync(js);
+                var r = await site.WebView.ExecuteScriptAsync(js);
                 return r is "\"true\"" or "true";
             });
             return await taskOfTask.Task.Unwrap();
@@ -493,10 +536,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
         catch { return false; }
     }
 
-    private static string JsStr(string v)
-        => "\"" + v.Replace("\\", "\\\\").Replace("\"", "\\\"")
-                   .Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t")
-          + "\"";
+    private static string JsStr(string v) => JsonSerializer.Serialize(v);
 
     // ── Dispose ───────────────────────────────────────────────────────────────
     public void Dispose()
