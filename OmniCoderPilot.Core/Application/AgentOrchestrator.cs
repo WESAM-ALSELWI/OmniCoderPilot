@@ -66,10 +66,11 @@ public sealed class AgentOrchestrator(
         db.TaskRuns.Add(run);
 
         // Avoid duplicate user message if already persisted by caller
-        var lastUserMsg = await db.Messages
+        var lastUserMsg = (await db.Messages
             .Where(m => m.ConversationId == request.ConversationId)
+            .ToListAsync(request.CancellationToken))
             .OrderByDescending(m => m.CreatedAt)
-            .FirstOrDefaultAsync(request.CancellationToken);
+            .FirstOrDefault();
 
         if (lastUserMsg is null || lastUserMsg.Role != ChatRole.User || lastUserMsg.Content != request.Prompt)
         {
@@ -560,10 +561,11 @@ public sealed class AgentOrchestrator(
                 await sink.TokenAsync(request.ConnectionId, request.ConversationId, answer);
             }
 
-            var lastAssistantMsg = await db.Messages
+            var lastAssistantMsg = (await db.Messages
                 .Where(m => m.ConversationId == request.ConversationId)
+                .ToListAsync(request.CancellationToken))
                 .OrderByDescending(m => m.CreatedAt)
-                .FirstOrDefaultAsync(request.CancellationToken);
+                .FirstOrDefault();
 
             if (lastAssistantMsg is null || lastAssistantMsg.Role != ChatRole.Assistant || lastAssistantMsg.Content != answer)
             {

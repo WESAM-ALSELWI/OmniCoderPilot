@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using OmniCoderPilot.Application;
 using OmniCoderPilot.Domain;
 
@@ -20,11 +20,12 @@ public sealed class ChatHistoryStore(IDbContextFactory<AppDbContext> dbFactory) 
         var yesterday = today.AddDays(-1);
         var weekAgo = today.AddDays(-7);
 
-        var conversations = await db.Conversations
+        var conversations = (await db.Conversations
             .Where(c => c.WorkspaceId == workspaceId)
-            .OrderByDescending(c => c.UpdatedAt)
             .Take(200)
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .OrderByDescending(c => c.UpdatedAt)
+            .ToList();
 
         var groups = new List<ConversationGroup>();
 
@@ -57,23 +58,25 @@ public sealed class ChatHistoryStore(IDbContextFactory<AppDbContext> dbFactory) 
         var results = new List<ConversationSearchResult>();
 
         // Search by title
-        var titleMatches = await db.Conversations
+        var titleMatches = (await db.Conversations
             .Where(c => c.WorkspaceId == workspaceId &&
                        c.Title.Contains(query))
-            .OrderByDescending(c => c.UpdatedAt)
             .Take(maxResults)
             .Select(c => new ConversationSearchResult(c.Id, c.Title, c.UpdatedAt, "title", c.Title))
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .OrderByDescending(c => c.Timestamp)
+            .ToList();
 
         results.AddRange(titleMatches);
 
         // Search by message content
-        var contentMatches = await db.Messages
+        var contentMatches = (await db.Messages
             .Where(m => m.Content.Contains(query) &&
                        m.Conversation!.WorkspaceId == workspaceId)
-            .OrderByDescending(m => m.CreatedAt)
             .Take(maxResults)
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .OrderByDescending(m => m.CreatedAt)
+            .ToList();
 
         var contentResults = contentMatches
             .Select(m => new ConversationSearchResult(
@@ -100,12 +103,13 @@ public sealed class ChatHistoryStore(IDbContextFactory<AppDbContext> dbFactory) 
         Guid conversationId, int count = 50, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        return await db.Messages
+        return (await db.Messages
             .Where(m => m.ConversationId == conversationId && m.Role == ChatRole.User)
-            .OrderByDescending(m => m.CreatedAt)
             .Take(count)
+            .ToListAsync(ct))
+            .OrderByDescending(m => m.CreatedAt)
             .Select(m => m.Content)
-            .ToListAsync(ct);
+            .ToList();
     }
 
     /// <summary>
@@ -114,10 +118,12 @@ public sealed class ChatHistoryStore(IDbContextFactory<AppDbContext> dbFactory) 
     public async Task<string> GenerateTitleAsync(Guid conversationId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        var firstMessage = await db.Messages
+        var firstMessage = (await db.Messages
             .Where(m => m.ConversationId == conversationId && m.Role == ChatRole.User)
+            .Take(10)
+            .ToListAsync(ct))
             .OrderBy(m => m.CreatedAt)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefault();
 
         if (firstMessage is null) return "New conversation";
 
