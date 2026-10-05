@@ -66,13 +66,12 @@ public sealed class AgentOrchestrator(
         db.TaskRuns.Add(run);
 
         // Avoid duplicate user message if already persisted by caller
-        var alreadySavedUser = await db.Messages.AnyAsync(m =>
-            m.ConversationId == request.ConversationId &&
-            m.Role == ChatRole.User &&
-            m.Content == request.Prompt &&
-            m.CreatedAt >= DateTimeOffset.UtcNow.AddSeconds(-30),
-            request.CancellationToken);
-        if (!alreadySavedUser)
+        var lastUserMsg = await db.Messages
+            .Where(m => m.ConversationId == request.ConversationId)
+            .OrderByDescending(m => m.CreatedAt)
+            .FirstOrDefaultAsync(request.CancellationToken);
+
+        if (lastUserMsg is null || lastUserMsg.Role != ChatRole.User || lastUserMsg.Content != request.Prompt)
         {
             db.Messages.Add(new ChatMessage
             {
@@ -81,8 +80,8 @@ public sealed class AgentOrchestrator(
                 Content = request.Prompt,
                 TokenEstimate = EstimateTokens(request.Prompt)
             });
-            await db.SaveChangesAsync(request.CancellationToken);
         }
+        await db.SaveChangesAsync(request.CancellationToken);
 
         await sink.StatusAsync(request.ConnectionId, run.Id, "Analysing request…", 3);
         await sink.AgentActivityAsync(request.ConnectionId, request.ConversationId,
@@ -561,13 +560,12 @@ public sealed class AgentOrchestrator(
                 await sink.TokenAsync(request.ConnectionId, request.ConversationId, answer);
             }
 
-            var alreadySavedAssistant = await db.Messages.AnyAsync(m =>
-                m.ConversationId == request.ConversationId &&
-                m.Role == ChatRole.Assistant &&
-                m.Content == answer &&
-                m.CreatedAt >= DateTimeOffset.UtcNow.AddSeconds(-30),
-                request.CancellationToken);
-            if (!alreadySavedAssistant)
+            var lastAssistantMsg = await db.Messages
+                .Where(m => m.ConversationId == request.ConversationId)
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync(request.CancellationToken);
+
+            if (lastAssistantMsg is null || lastAssistantMsg.Role != ChatRole.Assistant || lastAssistantMsg.Content != answer)
             {
                 db.Messages.Add(new ChatMessage
                 {
