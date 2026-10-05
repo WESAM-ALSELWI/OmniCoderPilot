@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:OmniCoderPilot.Wpf.ViewModels"
         xmlns:domain="clr-namespace:OmniCoderPilot.Domain;assembly=OmniCoderPilot.Core"
         xmlns:conv="clr-namespace:OmniCoderPilot.Wpf.Converters"
-        Title="OmniCoder Pilot" MinWidth="1000" MinHeight="600"
+        Title="✦ OmniCoder Pilot — Antigravity Agent" MinWidth="1050" MinHeight="640"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BgBrush}"
         FontFamily="{DynamicResource DefaultFont}"
@@ -21,11 +21,12 @@
         <conv:IdentityConverter x:Key="IdentityConverter"/>
         <conv:ExpandIconConverter x:Key="ExpandIcon"/>
 
+        <!-- Antigravity Navigation Button Style -->
         <Style x:Key="SidebarItemBtn" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource Text2Brush}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Padding" Value="12,8"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="13"/>
@@ -41,6 +42,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Panel3Brush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -48,20 +50,58 @@
             </Setter>
         </Style>
 
+        <!-- Antigravity Conversation Item -->
         <Style x:Key="ConvItem" TargetType="Border">
-            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Margin" Value="0,1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource Panel2Brush}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
+        <!-- Antigravity Section Header -->
         <Style x:Key="RailSectionTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
             <Setter Property="Margin" Value="10,0,10,6"/>
+        </Style>
+
+        <!-- Antigravity Quick Suggestion Prompt Chip Button -->
+        <Style x:Key="QuickPromptBtn" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource Panel2Brush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Panel3Brush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
@@ -81,7 +121,7 @@
                 </ColumnDefinition.Style>
             </ColumnDefinition>
 
-            <!-- Column 1: Center Chat (Expands to fill all remaining space) -->
+            <!-- Column 1: Center Chat Canvas -->
             <ColumnDefinition Width="*"/>
 
             <!-- Column 2: Resizer Splitter -->
@@ -115,61 +155,99 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="0,12,0,0">
-                    <Button Content="+ New Conversation"
-                            Command="{Binding Sidebar.NewChatCommand}"
-                            Style="{StaticResource SidebarItemBtn}" Margin="8,0"
-                            FontWeight="SemiBold" FontSize="13"/>
-                    <Button Content="&#x1F551;  Conversation History"
-                            Style="{StaticResource SidebarItemBtn}" Margin="8,0"/>
-                    <Button Content="&#x23F0;  Scheduled Tasks"
-                            Style="{StaticResource SidebarItemBtn}" Margin="8,0"/>
+                <!-- Top Action: Antigravity New Conversation Pill -->
+                <StackPanel Grid.Row="0" Margin="10,14,10,0">
+                    <Button Command="{Binding Sidebar.NewChatCommand}"
+                            Background="{DynamicResource Panel2Brush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Padding="12,9" Cursor="Hand" Margin="0,0,0,6">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="10" Padding="{TemplateBinding Padding}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="✦" FontSize="14" Foreground="{DynamicResource Accent3Brush}"
+                                                   Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="New Conversation" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Panel3Brush}"/>
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <Button Content="💬  All Conversations"
+                            Style="{StaticResource SidebarItemBtn}" Margin="0,1"/>
+                    <Button Content="⏱️  Scheduled Tasks"
+                            Style="{StaticResource SidebarItemBtn}" Margin="0,1"/>
                 </StackPanel>
 
                 <Border Grid.Row="1" Height="1" Background="{DynamicResource DividerBrush}" Margin="12,10"/>
 
+                <!-- Projects & Folders Header -->
                 <DockPanel Grid.Row="2" Margin="12,4,12,8">
-                    <TextBlock Text="Projects" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="PROJECTS" FontSize="10.5" FontWeight="Bold"
+                               Foreground="{DynamicResource Muted2Brush}" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="+" Padding="6,2" FontSize="14"
                                 Background="Transparent" BorderThickness="0"
                                 Foreground="{DynamicResource MutedBrush}" Cursor="Hand"
-                                ToolTip="New Project" Click="NewProject_Click"/>
+                                ToolTip="Open Project Folder" Click="NewProject_Click"/>
                     </StackPanel>
                 </DockPanel>
 
+                <!-- Project Folder Card & Conversation History -->
                 <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                        <Border Margin="8,0,8,4" Padding="6,4" CornerRadius="6"
+                    <StackPanel Margin="8,0">
+                        <!-- Active Workspace Folder Card -->
+                        <Border Margin="0,0,0,8" Padding="10,7" CornerRadius="8"
                                 Background="{DynamicResource Panel2Brush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
                                 Cursor="Hand"
                                 MouseLeftButtonDown="WorkspaceHeader_Click"
-                                ToolTip="Click to open / switch workspace folder">
+                                ToolTip="Click to open or change workspace folder">
                             <DockPanel>
-                                <TextBlock Text="&#x1F4C1;" FontSize="13" Margin="4,0,6,0"
+                                <TextBlock Text="📁" FontSize="13" Margin="0,0,8,0"
                                            VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding Sidebar.WorkspaceName}" FontSize="12"
                                            FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             </DockPanel>
                         </Border>
-                        <ItemsControl ItemsSource="{Binding Sidebar.Conversations}" Margin="0,0,0,8">
+
+                        <!-- Conversations List -->
+                        <ItemsControl ItemsSource="{Binding Sidebar.Conversations}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type domain:Conversation}">
                                     <Border Style="{StaticResource ConvItem}"
                                             MouseLeftButtonDown="Conversation_Click"
                                             ContextMenuOpening="Conversation_ContextOpening">
                                         <Grid>
-                                            <StackPanel Margin="20,0" Width="180">
-                                                <TextBlock Text="{Binding Title}" FontSize="13"
-                                                           Foreground="{DynamicResource Text2Brush}"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                            </StackPanel>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="• " FontSize="12"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12.5"
+                                                       Foreground="{DynamicResource Text2Brush}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
                                         </Grid>
                                         <Border.ContextMenu>
                                             <ContextMenu>
-                                                <MenuItem Header="Delete" Click="DeleteConversation_Click"
+                                                <MenuItem Header="Delete Conversation" Click="DeleteConversation_Click"
                                                           Foreground="{DynamicResource DangerBrush}"/>
                                             </ContextMenu>
                                         </Border.ContextMenu>
@@ -180,44 +258,97 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <Button Grid.Row="4" Content="&#x2699;  Settings"
+                <!-- Bottom Settings Action -->
+                <Button Grid.Row="4" Content="⚙️  Settings &amp; AI Providers"
                         Style="{StaticResource SidebarItemBtn}" Margin="8,0,8,12"
                         Click="Settings_Click"/>
             </Grid>
         </Border>
 
-        <!-- ═══════════════ CENTER CHAT ═══════════════ -->
+        <!-- ═══════════════ CENTER CHAT CANVAS ═══════════════ -->
         <DockPanel Grid.Column="1" Background="{DynamicResource BgBrush}">
 
-            <!-- Top Header Bar with Project Info, Actions & Toggle Right Panel Button (◫) -->
-            <Border DockPanel.Dock="Top" Background="{DynamicResource BgBrush}"
+            <!-- Antigravity Top Header Bar -->
+            <Border DockPanel.Dock="Top" Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1"
-                    Padding="14,8">
+                    Padding="14,9">
                 <DockPanel>
+                    <!-- Left: Toggle Sidebar, Antigravity Brand Sparkle & Active Thread Title -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- Toggle Left Sidebar Button -->
                         <Button Command="{Binding ToggleLeftSidebarCommand}"
-                                ToolTip="Toggle Left Sidebar"
+                                ToolTip="Toggle Sidebar (☰)"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                Padding="6,3" Margin="0,0,8,0">
-                            <TextBlock Text="&#x2630;" FontSize="15" Foreground="{DynamicResource MutedBrush}"/>
+                                Padding="6,3" Margin="0,0,10,0">
+                            <TextBlock Text="☰" FontSize="15" Foreground="{DynamicResource MutedBrush}"/>
                         </Button>
-                        <TextBlock Text="💬 " FontSize="14" VerticalAlignment="Center"/>
+
+                        <!-- Antigravity Brand Badge -->
+                        <TextBlock Text="✦ " FontSize="15" FontWeight="Bold"
+                                   Foreground="{DynamicResource Accent3Brush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="OmniCoder" FontSize="13.5" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
+
+                        <Border Background="{DynamicResource Panel3Brush}" CornerRadius="4"
+                                Padding="5,1" Margin="8,0,12,0" VerticalAlignment="Center">
+                            <TextBlock Text="v2.0" FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource AccentBrush}"/>
+                        </Border>
+
+                        <TextBlock Text="|" FontSize="12" Foreground="{DynamicResource DividerBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+                        <!-- Conversation Title -->
                         <TextBlock Text="{Binding Sidebar.SelectedConversation.Title, FallbackValue='New Conversation'}"
-                                   FontSize="13.5" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="380"/>
+                                   FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
                     </StackPanel>
 
+                    <!-- Right: Workspace Folder Pill, Agent Status, Theme Toggle & Panel Toggle (◫) -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <!-- Toggle Right Sidebar Button (Icon only) -->
+                        <!-- Workspace Pill -->
+                        <Border Background="{DynamicResource Panel2Brush}" CornerRadius="6"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                Padding="8,3" Margin="0,0,8,0"
+                                Visibility="{Binding Sidebar.WorkspaceId, Converter={StaticResource BoolToVis}}"
+                                ToolTip="{Binding Sidebar.WorkspacePath}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="📁 " FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Sidebar.WorkspaceName}" FontSize="11.5"
+                                           Foreground="{DynamicResource Text2Brush}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Antigravity Agent Ready / Active Status Indicator -->
+                        <Border Background="{DynamicResource Panel2Brush}" CornerRadius="6"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                Padding="8,3" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="●" FontSize="10" Foreground="{DynamicResource OnlineBrush}"
+                                           Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Ready" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text2Brush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Theme Toggle Button (🌓) -->
+                        <Button Command="{Binding ToggleThemeCommand}"
+                                ToolTip="Toggle Light / Dark Theme"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                Padding="6,3" Margin="0,0,4,0">
+                            <TextBlock Text="🌓" FontSize="13" Foreground="{DynamicResource MutedBrush}"/>
+                        </Button>
+
+                        <!-- Toggle Right Workspace Panel Button (◫) -->
                         <Button Command="{Binding ToggleRightRailCommand}"
-                                ToolTip="Toggle Workspace Panel (◫)"
+                                ToolTip="Toggle Workspace Panels (◫)"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
                                 Padding="2">
                             <Border Background="{DynamicResource Panel2Brush}" CornerRadius="6"
                                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                    Width="32" Height="30" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock Text="&#x25EB;" FontSize="16" FontWeight="Bold"
+                                    Width="30" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="◫" FontSize="14" FontWeight="Bold"
                                            Foreground="{DynamicResource AccentBrush}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
@@ -226,89 +357,96 @@
                 </DockPanel>
             </Border>
 
-            <!-- Composer pinned to bottom -->
+            <!-- ═══════════════ ANTIGRAVITY FLOATING COMPOSER (Pinned to Bottom) ═══════════════ -->
             <Border DockPanel.Dock="Bottom" Background="{DynamicResource BgBrush}"
-                    Padding="20,0,20,16">
-                <Grid Margin="8,0">
+                    Padding="24,0,24,18">
+                <Grid MaxWidth="920" HorizontalAlignment="Stretch">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
+                    <!-- Workspace path indicator bar (clickable) -->
                     <Button Grid.Row="0" Command="{Binding Sidebar.BrowseFolderCommand}"
                             Background="Transparent" BorderThickness="0" Cursor="Hand"
-                            HorizontalAlignment="Left" Padding="0" Margin="0,0,0,8"
+                            HorizontalAlignment="Left" Padding="0" Margin="4,0,0,8"
                             ToolTip="Click to select or change workspace folder"
                             Visibility="{Binding Sidebar.WorkspaceId, Converter={StaticResource BoolToVis}}">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#x1F4C1;" FontSize="13" Margin="0,0,6,0"
-                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="📁 " FontSize="12" Margin="0,0,4,0" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding Sidebar.WorkspacePath}"
-                                       FontSize="12.5" Foreground="{DynamicResource MutedBrush}"
-                                       TextTrimming="CharacterEllipsis" MaxWidth="500"
+                                       FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="540"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
 
-                    <Border Grid.Row="1" Background="{DynamicResource Panel2Brush}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                            CornerRadius="16" Padding="4,4">
+                    <!-- Floating Composer Card -->
+                    <Border Grid.Row="1" Background="{DynamicResource InputBrush}"
+                            BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1"
+                            CornerRadius="18" Padding="6,6"
+                            Effect="{DynamicResource MdShadow}">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
+                            <!-- Prompt TextBox -->
                             <TextBox Grid.Row="0"
                                      Text="{Binding Chat.Prompt, UpdateSourceTrigger=PropertyChanged}"
                                      AcceptsReturn="True" TextWrapping="Wrap"
-                                     MaxHeight="160" MinHeight="42"
+                                     MaxHeight="180" MinHeight="44"
                                      VerticalContentAlignment="Top"
                                      Background="Transparent" Foreground="{DynamicResource TextBrush}"
-                                     BorderThickness="0" Padding="12,10"
-                                     FontFamily="{DynamicResource DefaultFont}" FontSize="15"
+                                     CaretBrush="{DynamicResource AccentBrush}"
+                                     BorderThickness="0" Padding="14,10"
+                                     FontFamily="{DynamicResource DefaultFont}" FontSize="14.5"
                                      KeyDown="Prompt_KeyDown"
                                      TextOptions.TextFormattingMode="Display"/>
 
-                            <Grid Grid.Row="1" Margin="4,0,4,4">
+                            <!-- Bottom Toolbar inside Composer -->
+                            <Grid Grid.Row="1" Margin="6,2,6,4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <Button Grid.Column="0" Content="+" Padding="6,4"
+                                <!-- Context / Attach Button -->
+                                <Button Grid.Column="0" Content="+" Padding="8,4"
                                         FontSize="18" FontWeight="Light"
                                         Background="Transparent" BorderThickness="0"
-                                        Foreground="{DynamicResource MutedBrush}" Cursor="Hand"/>
+                                        Foreground="{DynamicResource MutedBrush}" Cursor="Hand"
+                                        ToolTip="Add context or files (@)"/>
 
+                                <!-- Center: Provider & Model Selectors + Web Chat Account Controls -->
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center">
                                     <!-- Provider Filter Selector -->
                                     <ComboBox ItemsSource="{Binding Sidebar.Providers}"
                                               SelectedItem="{Binding Sidebar.SelectedProvider}"
-                                              Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextBrush}"
+                                              Background="{DynamicResource Panel2Brush}" Foreground="{DynamicResource TextBrush}"
                                               BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                              Padding="6,3" FontSize="11.5" Margin="0,0,6,0"
-                                              ToolTip="Filter AI Provider (Local vs Cloud)"/>
+                                              Padding="8,4" FontSize="11.5" Margin="0,0,6,0"
+                                              ToolTip="Filter AI Provider (Local vs Cloud vs Web Brain)"/>
 
                                     <!-- Model Selector with Provider Badges -->
                                     <ComboBox ItemsSource="{Binding Sidebar.Models}"
                                               SelectedItem="{Binding Sidebar.SelectedModel}"
-                                              Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextBrush}"
+                                              Background="{DynamicResource Panel2Brush}" Foreground="{DynamicResource TextBrush}"
                                               BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                              Padding="6,3" FontSize="12"
+                                              Padding="8,4" FontSize="12"
                                               MinWidth="180" MaxWidth="280"
-                                              ToolTip="Select Active AI Model">
+                                              ToolTip="Select Active Model">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Icon}" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
                                                                Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
-                                                    <Border Background="#1A3B82F6" CornerRadius="4" Padding="4,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                    <Border Background="#263B82F6" CornerRadius="4" Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding Tag}" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
                                                     </Border>
                                                 </StackPanel>
@@ -316,70 +454,80 @@
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
 
-                                    <!-- Web Chat Account Controls (Visible when webchat model selected) -->
+                                    <!-- Web Chat Account Controls (Visible when Web Chat selected) -->
+                                    <Border Visibility="{Binding Sidebar.IsWebChatModelSelected, Converter={StaticResource BoolToVis}}"
+                                            Background="#1A10B981" BorderBrush="#3310B981" BorderThickness="1"
+                                            CornerRadius="6" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="●" FontSize="9" Foreground="{DynamicResource Accent2Brush}"
+                                                       Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Web Brain" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Accent2Brush}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+
                                     <Button Command="{Binding Sidebar.SwitchAccountCommand}"
                                             Visibility="{Binding Sidebar.IsWebChatModelSelected, Converter={StaticResource BoolToVis}}"
-                                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                            Background="{DynamicResource Panel2Brush}" BorderBrush="{DynamicResource BorderBrush}"
                                             BorderThickness="1" Foreground="{DynamicResource AccentBrush}"
-                                            Padding="8,3" FontSize="11.5" Margin="6,0,0,0" Cursor="Hand"
-                                            ToolTip="Switch account or log in with another account for this Web Chat">
-                                        <TextBlock Text="&#x1F464; Switch Account" FontSize="11" FontWeight="SemiBold"/>
+                                            Padding="8,3" FontSize="11" Margin="6,0,0,0" Cursor="Hand"
+                                            ToolTip="Switch account or login in another account">
+                                        <TextBlock Text="👤 Switch" FontSize="11" FontWeight="SemiBold"/>
                                     </Button>
 
                                     <Button Command="{Binding Sidebar.LogoutWebChatCommand}"
                                             Visibility="{Binding Sidebar.IsWebChatModelSelected, Converter={StaticResource BoolToVis}}"
-                                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                            BorderThickness="1" Foreground="#FFEF4444"
+                                            Background="{DynamicResource Panel2Brush}" BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="1" Foreground="{DynamicResource DangerBrush}"
                                             Padding="6,3" FontSize="11" Margin="4,0,0,0" Cursor="Hand"
-                                            ToolTip="Log out of this Web Chat account">
-                                        <TextBlock Text="&#x1F6AA; Logout" FontSize="11"/>
+                                            ToolTip="Log out from Web Chat account">
+                                        <TextBlock Text="🚪 Logout" FontSize="11"/>
                                     </Button>
                                 </StackPanel>
 
-                                <Button Grid.Column="2" Padding="6,4" FontSize="14"
-                                        Background="Transparent" BorderThickness="0"
-                                        Foreground="{DynamicResource MutedBrush}" Cursor="Hand"
-                                        Margin="0,0,4,0">
-                                    <TextBlock Text="&#x270F;"/>
-                                </Button>
+                                <!-- Right: Mode Tag & Antigravity Send Button -->
+                                <Border Grid.Column="2" Background="{DynamicResource Panel3Brush}" CornerRadius="6"
+                                        Padding="6,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock Text="⚡ Agent" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text2Brush}"/>
+                                </Border>
 
-                                <Button Grid.Column="3" Padding="6,4" FontSize="14"
-                                        Background="Transparent" BorderThickness="0"
-                                        Foreground="{DynamicResource MutedBrush}" Cursor="Hand"
-                                        Margin="0,0,4,0">
-                                    <TextBlock Text="&#x1F3A4;"/>
-                                </Button>
-
-                                <StackPanel Grid.Column="4" Orientation="Horizontal">
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                     <!-- Send Button (when not running) -->
-                                    <Button Padding="8,4"
+                                    <Button Width="34" Height="34"
                                             Command="{Binding Chat.SendCommand}"
                                             IsEnabled="{Binding Chat.CanSend}"
                                             Visibility="{Binding Chat.IsRunning, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"
-                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                            ToolTip="Send (Enter)">
-                                        <Button.Style>
-                                            <Style TargetType="Button">
-                                                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsEnabled" Value="True">
-                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                            Cursor="Hand" ToolTip="Send (Enter)">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="SendBd" Background="{DynamicResource SendButtonGradient}"
+                                                        CornerRadius="17" Width="34" Height="34">
+                                                    <TextBlock Text="➤" FontSize="14" Foreground="White"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Margin="2,0,0,0"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter TargetName="SendBd" Property="Opacity" Value="0.4"/>
                                                     </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                        <TextBlock Text="&#x27A4;" FontSize="20"/>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="SendBd" Property="Opacity" Value="0.9"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
                                     </Button>
 
                                     <!-- Stop Button (when running) -->
-                                    <Button Padding="8,4"
-                                            Command="{Binding Chat.StopCommand}"
+                                    <Button Command="{Binding Chat.StopCommand}"
                                             Visibility="{Binding Chat.IsRunning, Converter={StaticResource BoolToVis}}"
                                             Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                            ToolTip="Stop Task">
-                                        <Border Background="#26EF4444" CornerRadius="6" Padding="8,3">
+                                            ToolTip="Stop Agent Execution">
+                                        <Border Background="#26EF4444" BorderBrush="#40EF4444" BorderThickness="1"
+                                                CornerRadius="8" Padding="10,5">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="&#x23F9;" FontSize="13" Foreground="{DynamicResource DangerBrush}" Margin="0,0,4,0"/>
+                                                <TextBlock Text="■" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
                                                 <TextBlock Text="Stop" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource DangerBrush}"/>
                                             </StackPanel>
                                         </Border>
@@ -389,226 +537,344 @@
                         </Grid>
                     </Border>
 
+                    <!-- Active Model Sub-label -->
                     <TextBlock Grid.Row="2" Text="{Binding Sidebar.CurrentProviderLabel}" FontSize="11"
                                Foreground="{DynamicResource Muted2Brush}"
                                HorizontalAlignment="Center" Margin="0,8,0,0"/>
                 </Grid>
             </Border>
 
-            <!-- Messages fill remaining space above -->
+            <!-- ═══════════════ CHAT MESSAGE STREAM & WELCOME STATE ═══════════════ -->
             <ScrollViewer Name="ChatScroll" VerticalScrollBarVisibility="Auto"
                           Background="{DynamicResource BgBrush}">
-                <StackPanel HorizontalAlignment="Center" MaxWidth="920" Margin="32,20,32,8">
+                <StackPanel HorizontalAlignment="Center" MaxWidth="920" Margin="32,24,32,12">
+
+                    <!-- Antigravity Welcome Hero Screen (Visible when Messages list is empty) -->
+                    <StackPanel Visibility="{Binding Chat.Messages, Converter={StaticResource CollToVis}, ConverterParameter=Invert}"
+                                Margin="0,48,0,32" HorizontalAlignment="Center">
+                        <!-- Hero Brand Logo Sparkle -->
+                        <Border Background="{DynamicResource Panel2Brush}" CornerRadius="20"
+                                Width="64" Height="64" HorizontalAlignment="Center" Margin="0,0,0,16"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                            <TextBlock Text="✦" FontSize="34" FontWeight="Bold"
+                                       Foreground="{DynamicResource Accent3Brush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <TextBlock Text="What would you like to build today?"
+                                   FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"/>
+
+                        <TextBlock Text="Autonomous AI coding assistant powered by deep workspace reasoning, tools, and execution runtime."
+                                   FontSize="13.5" Foreground="{DynamicResource MutedBrush}"
+                                   HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="620"
+                                   LineHeight="20" Margin="0,0,0,32"/>
+
+                        <!-- 4 Quick Suggestion Prompt Chips -->
+                        <Grid HorizontalAlignment="Center" MaxWidth="720">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="340"/>
+                                <ColumnDefinition Width="340"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Button Grid.Row="0" Grid.Column="0" Margin="6"
+                                    Style="{StaticResource QuickPromptBtn}"
+                                    Tag="Analyze this workspace architecture and list key components"
+                                    Click="QuickPrompt_Click">
+                                <StackPanel>
+                                    <TextBlock Text="⚡ Understand Architecture" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{DynamicResource TextBrush}"/>
+                                    <TextBlock Text="Inspect solution structure, projects &amp; dependencies" FontSize="11.5"
+                                               Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Grid.Row="0" Grid.Column="1" Margin="6"
+                                    Style="{StaticResource QuickPromptBtn}"
+                                    Tag="Scan the codebase for build issues, lint warnings, or bugs"
+                                    Click="QuickPrompt_Click">
+                                <StackPanel>
+                                    <TextBlock Text="🔍 Scan for Issues" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{DynamicResource TextBrush}"/>
+                                    <TextBlock Text="Find compile errors, warnings, and code smells" FontSize="11.5"
+                                               Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Grid.Row="1" Grid.Column="0" Margin="6"
+                                    Style="{StaticResource QuickPromptBtn}"
+                                    Tag="Run tests and review failing assertions or code coverage"
+                                    Click="QuickPrompt_Click">
+                                <StackPanel>
+                                    <TextBlock Text="🧪 Run &amp; Review Tests" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{DynamicResource TextBrush}"/>
+                                    <TextBlock Text="Execute test suite and diagnose failures" FontSize="11.5"
+                                               Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Grid.Row="1" Grid.Column="1" Margin="6"
+                                    Style="{StaticResource QuickPromptBtn}"
+                                    Tag="Check git status and explain recent modified files"
+                                    Click="QuickPrompt_Click">
+                                <StackPanel>
+                                    <TextBlock Text="🔀 Inspect Git Status" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{DynamicResource TextBrush}"/>
+                                    <TextBlock Text="Review unstaged diffs, branch state, and history" FontSize="11.5"
+                                               Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Active Messages List -->
                     <ItemsControl ItemsSource="{Binding Chat.Messages}">
                         <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:ChatMessageViewModel}">
-                            <Grid Margin="0,0,0,8">
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Setter Property="HorizontalAlignment" Value="Right"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsUser}" Value="False">
-                                                <Setter Property="HorizontalAlignment" Value="Left"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
+                            <DataTemplate DataType="{x:Type vm:ChatMessageViewModel}">
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.Style>
+                                        <Style TargetType="Grid">
+                                            <Setter Property="HorizontalAlignment" Value="Right"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsUser}" Value="False">
+                                                    <Setter Property="HorizontalAlignment" Value="Left"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
 
-                                <StackPanel MaxWidth="920">
-                                    <!-- User message with Copy & Modify actions -->
-                                    <StackPanel Visibility="{Binding IsUser, Converter={StaticResource BoolToVis}}">
-                                        <Border Background="{DynamicResource Panel2Brush}"
-                                                CornerRadius="16,16,4,16" Padding="14,10">
-                                            <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
-                                                       Foreground="{DynamicResource TextBrush}" FontSize="14"/>
-                                        </Border>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,3,4,2">
-                                            <Button Content="&#x1F4CB; Copy" FontSize="11" Foreground="{DynamicResource MutedBrush}"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
-                                                    Command="{Binding DataContext.Chat.CopyMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding Content}"
-                                                    ToolTip="Copy to clipboard"/>
-                                            <Button Content="&#x270F;&#xFE0F; Modify" FontSize="11" Foreground="{DynamicResource MutedBrush}"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                    Command="{Binding DataContext.Chat.EditAndResendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding Content}"
-                                                    ToolTip="Edit in input box and resend"/>
+                                    <StackPanel MaxWidth="920">
+                                        <!-- User Message Card -->
+                                        <StackPanel Visibility="{Binding IsUser, Converter={StaticResource BoolToVis}}">
+                                            <Border Background="{DynamicResource UserMessageBrush}"
+                                                    BorderBrush="{DynamicResource UserMessageBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="16,16,4,16" Padding="16,12">
+                                                <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextBrush}" FontSize="14.5"
+                                                           LineHeight="22"/>
+                                            </Border>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,4,2">
+                                                <Button Content="📋 Copy" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
+                                                        Command="{Binding DataContext.Chat.CopyMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Content}"
+                                                        ToolTip="Copy message"/>
+                                                <Button Content="✏️ Modify" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                        Command="{Binding DataContext.Chat.EditAndResendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Content}"
+                                                        ToolTip="Edit in composer and resend"/>
+                                            </StackPanel>
                                         </StackPanel>
-                                    </StackPanel>
 
-                                    <StackPanel Visibility="{Binding IsAssistant, Converter={StaticResource BoolToVis}}">
-                                        <!-- Chronological Agent Execution Trace (Observe -> Think -> Act -> Observe) -->
-                                        <ItemsControl ItemsSource="{Binding TraceItems}"
-                                                      Visibility="{Binding HasTraceItems, Converter={StaticResource BoolToVis}}"
-                                                      Margin="0,0,0,8">
-                                            <ItemsControl.Resources>
-                                                <!-- Thought / Reasoning Step (matches reference image style) -->
-                                                <DataTemplate DataType="{x:Type vm:ThinkingStepViewModel}">
-                                                    <StackPanel Margin="0,8,0,4">
-                                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                                   Foreground="{DynamicResource TextBrush}" FontSize="13.5"
-                                                                   LineHeight="21"/>
-                                                    </StackPanel>
-                                                </DataTemplate>
+                                        <!-- Assistant Message Card -->
+                                        <StackPanel Visibility="{Binding IsAssistant, Converter={StaticResource BoolToVis}}">
+                                            <!-- Assistant Header Bar -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                                                <Border Background="{DynamicResource Panel2Brush}" CornerRadius="6"
+                                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                        Width="24" Height="24" Margin="0,0,8,0">
+                                                    <TextBlock Text="✦" FontSize="13" Foreground="{DynamicResource Accent3Brush}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="OmniCoder" FontSize="13" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
+                                            </StackPanel>
 
-                                                <!-- Tool Action Group (Explored N reads / Edit File +N -N) -->
-                                                <DataTemplate DataType="{x:Type vm:ToolStepGroupViewModel}">
-                                                    <StackPanel Margin="0,3,0,6">
-                                                        <!-- Expandable read/explore action group (e.g., Explored 2 reads) -->
-                                                        <Expander Visibility="{Binding IsExpandable, Converter={StaticResource BoolToVis}}"
-                                                                  Margin="0,2,0,4">
-                                                            <Expander.Header>
-                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                    <TextBlock Text="{Binding HeaderTitle}" FontWeight="Bold" FontSize="13"
-                                                                               Foreground="{DynamicResource TextBrush}" Margin="0,0,6,0"/>
-                                                                    <TextBlock Text="{Binding HeaderSuffix}" FontSize="13"
-                                                                               Foreground="{DynamicResource MutedBrush}"/>
-                                                                </StackPanel>
-                                                            </Expander.Header>
-                                                            <ItemsControl ItemsSource="{Binding Steps}" Margin="16,4,0,2">
+                                            <!-- Chronological Agent Trace: Reasoning -> Tool -> Output -->
+                                            <ItemsControl ItemsSource="{Binding TraceItems}"
+                                                          Visibility="{Binding HasTraceItems, Converter={StaticResource BoolToVis}}"
+                                                          Margin="0,0,0,8">
+                                                <ItemsControl.Resources>
+                                                    <!-- Antigravity Thought / Reasoning Accordion Step -->
+                                                    <DataTemplate DataType="{x:Type vm:ThinkingStepViewModel}">
+                                                        <Border Background="{DynamicResource ReasoningBgBrush}"
+                                                                BorderBrush="{DynamicResource ReasoningBorderBrush}"
+                                                                BorderThickness="1" CornerRadius="10"
+                                                                Padding="14,10" Margin="0,4,0,8">
+                                                            <StackPanel>
+                                                                <DockPanel Margin="0,0,0,4">
+                                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                        <TextBlock Text="✦ Reasoning Process" FontSize="12" FontWeight="Bold"
+                                                                                   Foreground="{DynamicResource Accent3Brush}"/>
+                                                                    </StackPanel>
+                                                                </DockPanel>
+                                                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                                           Foreground="{DynamicResource Text2Brush}" FontSize="13"
+                                                                           LineHeight="20"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+
+                                                    <!-- Tool Execution Step Group -->
+                                                    <DataTemplate DataType="{x:Type vm:ToolStepGroupViewModel}">
+                                                        <StackPanel Margin="0,3,0,6">
+                                                            <!-- Expandable read/explore action group (e.g., Explored 3 reads) -->
+                                                            <Expander Visibility="{Binding IsExpandable, Converter={StaticResource BoolToVis}}"
+                                                                      Margin="0,2,0,4">
+                                                                <Expander.Header>
+                                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                        <TextBlock Text="{Binding HeaderTitle}" FontWeight="Bold" FontSize="13"
+                                                                                   Foreground="{DynamicResource TextBrush}" Margin="0,0,6,0"/>
+                                                                        <TextBlock Text="{Binding HeaderSuffix}" FontSize="13"
+                                                                                   Foreground="{DynamicResource MutedBrush}"/>
+                                                                    </StackPanel>
+                                                                </Expander.Header>
+                                                                <ItemsControl ItemsSource="{Binding Steps}" Margin="16,4,0,2">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate DataType="{x:Type vm:ToolStepEntryViewModel}">
+                                                                            <Border Margin="0,1" Padding="6,3" Background="Transparent">
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                    <TextBlock Text="📖 " FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                                                    <TextBlock Text="{Binding FilePath}" FontFamily="{DynamicResource MonoFont}"
+                                                                                               FontSize="12" Foreground="{DynamicResource Text2Brush}"
+                                                                                               VerticalAlignment="Center"/>
+                                                                                    <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                                                               Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                                               Visibility="{Binding Detail, Converter={StaticResource StrToVis}}"/>
+                                                                                </StackPanel>
+                                                                            </Border>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </Expander>
+
+                                                            <!-- Standalone tool actions (e.g., Edit File +1 -0) -->
+                                                            <ItemsControl ItemsSource="{Binding Steps}"
+                                                                          Visibility="{Binding IsExpandable, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}">
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate DataType="{x:Type vm:ToolStepEntryViewModel}">
-                                                                        <Border Margin="0,1" Padding="6,3" Background="Transparent">
-                                                                            <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="&#x1F4D6;" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                                                <TextBlock Text="{Binding FilePath}" FontFamily="{DynamicResource MonoFont}"
-                                                                                           FontSize="12" Foreground="{DynamicResource Text2Brush}"
-                                                                                           VerticalAlignment="Center"/>
-                                                                                <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource MutedBrush}"
-                                                                                           Margin="8,0,0,0" VerticalAlignment="Center"
-                                                                                           Visibility="{Binding Detail, Converter={StaticResource StrToVis}}"/>
-                                                                            </StackPanel>
-                                                                        </Border>
+                                                                        <StackPanel>
+                                                                            <Border Margin="0,2" Padding="8,5"
+                                                                                    Background="{DynamicResource Panel2Brush}"
+                                                                                    BorderBrush="{DynamicResource BorderBrush}"
+                                                                                    BorderThickness="1" CornerRadius="8"
+                                                                                    Cursor="{Binding CanExpand, Converter={StaticResource BoolToVis}, ConverterParameter=Hand}"
+                                                                                    MouseLeftButtonDown="ToolStepEntry_Click">
+                                                                                <Grid>
+                                                                                    <Grid.ColumnDefinitions>
+                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                        <ColumnDefinition Width="*"/>
+                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                    </Grid.ColumnDefinitions>
+
+                                                                                    <!-- Action Name -->
+                                                                                    <TextBlock Grid.Column="0" Text="{Binding ActionTitle}" FontWeight="Bold"
+                                                                                               FontSize="13" Foreground="{DynamicResource TextBrush}"
+                                                                                               Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+                                                                                    <!-- File Name / Path in mono font -->
+                                                                                    <TextBlock Grid.Column="1" Text="{Binding FilePath}"
+                                                                                               FontFamily="{DynamicResource MonoFont}" FontSize="12.5"
+                                                                                               Foreground="{DynamicResource Text2Brush}"
+                                                                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                                                                                    <!-- Line Deltas (+1 -0 in diff colors) -->
+                                                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                                                        <TextBlock Text="{Binding AddedText}" FontSize="12.5" FontWeight="Bold"
+                                                                                                   Foreground="{DynamicResource EditBrush}"
+                                                                                                   FontFamily="{DynamicResource MonoFont}" Margin="0,0,6,0"
+                                                                                                   Visibility="{Binding AddedText, Converter={StaticResource StrToVis}}"/>
+                                                                                        <TextBlock Text="{Binding RemovedText}" FontSize="12.5" FontWeight="Bold"
+                                                                                                   Foreground="{DynamicResource DeleteBrush}"
+                                                                                                   FontFamily="{DynamicResource MonoFont}"
+                                                                                                   Visibility="{Binding RemovedText, Converter={StaticResource StrToVis}}"/>
+                                                                                    </StackPanel>
+
+                                                                                    <!-- Expand indicator -->
+                                                                                    <TextBlock Grid.Column="3" Text="{Binding IsExpanded, Converter={StaticResource ExpandIcon}}"
+                                                                                               FontSize="10" Foreground="{DynamicResource MutedBrush}"
+                                                                                               Margin="6,0,0,0" VerticalAlignment="Center"
+                                                                                               Visibility="{Binding CanExpand, Converter={StaticResource BoolToVis}}"/>
+                                                                                </Grid>
+                                                                            </Border>
+
+                                                                            <!-- Diff content (expandable) -->
+                                                                            <Border Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"
+                                                                                    Background="{DynamicResource CodeBgBrush}"
+                                                                                    BorderBrush="{DynamicResource CodeBorderBrush}"
+                                                                                    BorderThickness="1"
+                                                                                    CornerRadius="0,0,8,8" Margin="8,0,0,6"
+                                                                                    Padding="10,8" MaxWidth="720">
+                                                                                <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Auto">
+                                                                                    <TextBlock Text="{Binding DiffContent}"
+                                                                                               FontFamily="{DynamicResource MonoFont}"
+                                                                                               FontSize="11.5" Foreground="{DynamicResource TextBrush}"
+                                                                                               TextWrapping="Wrap" LineHeight="17"/>
+                                                                                </ScrollViewer>
+                                                                            </Border>
+                                                                        </StackPanel>
                                                                     </DataTemplate>
                                                                 </ItemsControl.ItemTemplate>
                                                             </ItemsControl>
-                                                        </Expander>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.Resources>
+                                            </ItemsControl>
 
-                                                        <!-- Standalone tool actions (e.g., Edit ChatViewModel.cs +1 -0) -->
-                                                        <ItemsControl ItemsSource="{Binding Steps}"
-                                                                      Visibility="{Binding IsExpandable, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}">
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate DataType="{x:Type vm:ToolStepEntryViewModel}">
-                                                                    <StackPanel>
-                                                                        <Border Margin="0,2" Padding="2,3" Background="Transparent"
-                                                                                Cursor="{Binding CanExpand, Converter={StaticResource BoolToVis}, ConverterParameter=Hand}"
-                                                                                MouseLeftButtonDown="ToolStepEntry_Click">
-                                                                            <Grid>
-                                                                                <Grid.ColumnDefinitions>
-                                                                                    <ColumnDefinition Width="Auto"/>
-                                                                                    <ColumnDefinition Width="*"/>
-                                                                                    <ColumnDefinition Width="Auto"/>
-                                                                                    <ColumnDefinition Width="Auto"/>
-                                                                                </Grid.ColumnDefinitions>
+                                            <!-- Final Assistant Answer Text -->
+                                            <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextBrush}" FontSize="14.5"
+                                                       LineHeight="24" Margin="0,4,0,0"
+                                                       Visibility="{Binding Content, Converter={StaticResource StrToVis}}"/>
 
-                                                                                <!-- Action Name (Edit, Write, etc.) -->
-                                                                                <TextBlock Grid.Column="0" Text="{Binding ActionTitle}" FontWeight="Bold"
-                                                                                           FontSize="13.5" Foreground="{DynamicResource TextBrush}"
-                                                                                           Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <!-- Blinking Streaming Cursor -->
+                                            <TextBlock Text="✦" Foreground="{DynamicResource Accent3Brush}"
+                                                       FontSize="15" Margin="2,4,0,0"
+                                                       Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock.Resources>
+                                                    <Storyboard x:Key="CursorBlink" RepeatBehavior="Forever" AutoReverse="True">
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         From="0.2" To="1.0" Duration="0:0:0.6"/>
+                                                    </Storyboard>
+                                                </TextBlock.Resources>
+                                                <TextBlock.Triggers>
+                                                    <EventTrigger RoutedEvent="TextBlock.Loaded">
+                                                        <BeginStoryboard Storyboard="{StaticResource CursorBlink}"/>
+                                                    </EventTrigger>
+                                                </TextBlock.Triggers>
+                                            </TextBlock>
 
-                                                                                <!-- File Name / Path in mono font -->
-                                                                                <TextBlock Grid.Column="1" Text="{Binding FilePath}"
-                                                                                           FontFamily="{DynamicResource MonoFont}" FontSize="12.5"
-                                                                                           Foreground="{DynamicResource Text2Brush}"
-                                                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-
-                                                                                <!-- Line Deltas (+1 -0 in diff colors) -->
-                                                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                                                                    <TextBlock Text="{Binding AddedText}" FontSize="12.5" FontWeight="Bold"
-                                                                                               Foreground="{DynamicResource EditBrush}"
-                                                                                               FontFamily="{DynamicResource MonoFont}" Margin="0,0,6,0"
-                                                                                               Visibility="{Binding AddedText, Converter={StaticResource StrToVis}}"/>
-                                                                                    <TextBlock Text="{Binding RemovedText}" FontSize="12.5" FontWeight="Bold"
-                                                                                               Foreground="{DynamicResource DeleteBrush}"
-                                                                                               FontFamily="{DynamicResource MonoFont}"
-                                                                                               Visibility="{Binding RemovedText, Converter={StaticResource StrToVis}}"/>
-                                                                                </StackPanel>
-
-                                                                                <!-- Expand indicator -->
-                                                                                <TextBlock Grid.Column="3" Text="{Binding IsExpanded, Converter={StaticResource ExpandIcon}}"
-                                                                                           FontSize="10" Foreground="{DynamicResource MutedBrush}"
-                                                                                           Margin="6,0,0,0" VerticalAlignment="Center"
-                                                                                           Visibility="{Binding CanExpand, Converter={StaticResource BoolToVis}}"/>
-                                                                            </Grid>
-                                                                        </Border>
-
-                                                                        <!-- Diff content (expandable) -->
-                                                                        <Border Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"
-                                                                                Background="{DynamicResource Panel3Brush}"
-                                                                                CornerRadius="0,0,8,8" Margin="16,0,0,4"
-                                                                                Padding="8,6" MaxWidth="600">
-                                                                            <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Auto">
-                                                                                <TextBlock Text="{Binding DiffContent}"
-                                                                                           FontFamily="{DynamicResource MonoFont}"
-                                                                                           FontSize="11" Foreground="{DynamicResource Text2Brush}"
-                                                                                           TextWrapping="Wrap" LineHeight="16"/>
-                                                                            </ScrollViewer>
-                                                                        </Border>
-                                                                    </StackPanel>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.Resources>
-                                        </ItemsControl>
-
-                                        <!-- Final Assistant Answer Text -->
-                                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource TextBrush}" FontSize="14.5"
-                                                   LineHeight="23" Margin="0,4,0,0"
-                                                   Visibility="{Binding Content, Converter={StaticResource StrToVis}}"/>
-
-                                        <!-- Blinking Streaming Cursor -->
-                                        <TextBlock Text="&#x2588;" Foreground="{DynamicResource AccentBrush}"
-                                                   FontSize="14" Margin="2,2,0,0"
-                                                   Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock.Resources>
-                                                <Storyboard x:Key="CursorBlink" RepeatBehavior="Forever" AutoReverse="True">
-                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                     From="0.1" To="1.0" Duration="0:0:0.5"/>
-                                                </Storyboard>
-                                            </TextBlock.Resources>
-                                            <TextBlock.Triggers>
-                                                <EventTrigger RoutedEvent="TextBlock.Loaded">
-                                                    <BeginStoryboard Storyboard="{StaticResource CursorBlink}"/>
-                                                </EventTrigger>
-                                            </TextBlock.Triggers>
-                                        </TextBlock>
-
-                                        <!-- Assistant Message Actions (Copy & Modify in Composer) -->
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,2"
-                                                    Visibility="{Binding Content, Converter={StaticResource StrToVis}}">
-                                            <Button Content="&#x1F4CB; Copy" FontSize="11" Foreground="{DynamicResource MutedBrush}"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
-                                                    Command="{Binding DataContext.Chat.CopyMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding Content}"
-                                                    ToolTip="Copy response to clipboard"/>
-                                            <Button Content="&#x270F;&#xFE0F; Modify in Composer" FontSize="11" Foreground="{DynamicResource MutedBrush}"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                    Command="{Binding DataContext.Chat.EditAndResendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding Content}"
-                                                    ToolTip="Copy to composer to edit"/>
+                                            <!-- Assistant Message Actions -->
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,8,0,2"
+                                                        Visibility="{Binding Content, Converter={StaticResource StrToVis}}">
+                                                <Button Content="📋 Copy" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"
+                                                        Command="{Binding DataContext.Chat.CopyMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Content}"
+                                                        ToolTip="Copy response"/>
+                                                <Button Content="✏️ Modify in Composer" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                        Command="{Binding DataContext.Chat.EditAndResendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Content}"
+                                                        ToolTip="Copy to composer to edit"/>
+                                            </StackPanel>
                                         </StackPanel>
-                                    </StackPanel>
 
-                                    <Border Visibility="{Binding IsError, Converter={StaticResource BoolToVis}}"
-                                            Background="#1A0808" CornerRadius="10" Padding="12,8"
-                                            BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1">
-                                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource DangerBrush}" FontSize="13"/>
-                                    </Border>
-                                </StackPanel>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
+                                        <!-- Error Message Bubble -->
+                                        <Border Visibility="{Binding IsError, Converter={StaticResource BoolToVis}}"
+                                                Background="#26EF4444" CornerRadius="10" Padding="14,10"
+                                                BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1">
+                                            <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource DangerBrush}" FontSize="13.5"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
                     <!-- Live State: Pulsing Thinking Indicator -->
                     <Border Visibility="{Binding Chat.IsThinking, Converter={StaticResource BoolToVis}}"
                             Margin="0,8,0,16" HorizontalAlignment="Left">
-                        <Border Background="{DynamicResource Panel2Brush}" CornerRadius="12"
-                                Padding="14,9" BorderBrush="{DynamicResource BorderBrush}"
+                        <Border Background="{DynamicResource ReasoningBgBrush}" CornerRadius="12"
+                                Padding="14,9" BorderBrush="{DynamicResource ReasoningBorderBrush}"
                                 BorderThickness="1">
                             <Border.Resources>
                                 <Storyboard x:Key="ThinkingPulse" RepeatBehavior="Forever" AutoReverse="True">
@@ -623,10 +889,10 @@
                                             <BeginStoryboard Storyboard="{StaticResource ThinkingPulse}"/>
                                         </EventTrigger>
                                     </StackPanel.Triggers>
-                                    <TextBlock Text="Thinking" FontSize="13.5" FontWeight="Bold"
-                                               Foreground="{DynamicResource TextBrush}"
+                                    <TextBlock Text="✦ Reasoning" FontSize="13.5" FontWeight="Bold"
+                                               Foreground="{DynamicResource Accent3Brush}"
                                                VerticalAlignment="Center"/>
-                                    <TextBlock Text=" &#x2022;&#x2022;&#x2022;" FontSize="13.5" FontWeight="Bold"
+                                    <TextBlock Text=" •••" FontSize="13.5" FontWeight="Bold"
                                                Foreground="{DynamicResource AccentBrush}"
                                                VerticalAlignment="Center" Margin="2,0,0,0"/>
                                 </StackPanel>
@@ -646,7 +912,7 @@
                       Background="{DynamicResource DividerBrush}" ShowsPreview="False" Cursor="SizeWE"
                       Visibility="{Binding IsRightRailOpen, Converter={StaticResource BoolToVis}}"/>
 
-        <!-- ═══════════════ RIGHT RAIL ═══════════════ -->
+        <!-- ═══════════════ RIGHT RAIL (AUXILIARY WORKSPACE PANELS) ═══════════════ -->
         <Border Grid.Column="3" Background="{DynamicResource SidebarBrush}"
                 BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1,0,0,0"
                 Visibility="{Binding IsRightRailOpen, Converter={StaticResource BoolToVis}}">
@@ -662,32 +928,32 @@
                 <!-- Right Rail Header Bar -->
                 <Border Grid.Row="0" Background="{DynamicResource SidebarBrush}"
                         BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1"
-                        Padding="10,8">
+                        Padding="12,10">
                     <DockPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="&#x25EB;" FontSize="14" Foreground="{DynamicResource AccentBrush}"
-                                       Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="◫ " FontSize="14" Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center"/>
                             <TextBlock Text="Workspace Panels" FontSize="12.5" FontWeight="Bold"
                                        Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <!-- Hide / Collapse Button -->
+                        <!-- Collapse Button -->
                         <Button Command="{Binding ToggleRightRailCommand}"
                                 ToolTip="Collapse Panel (◫)"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
                                 HorizontalAlignment="Right" Padding="6,2">
-                            <TextBlock Text="&#x2715;" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
+                            <TextBlock Text="✕" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
                         </Button>
                     </DockPanel>
                 </Border>
 
-                <!-- Task Plan -->
+                <!-- 1. Task Plan & Todo -->
                 <Border Grid.Row="1" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-                    <DockPanel Margin="8">
-                        <TextBlock DockPanel.Dock="Top" Text="&#x1F4CB; Task Plan"
+                    <DockPanel Margin="10,8">
+                        <TextBlock DockPanel.Dock="Top" Text="📋 Task Plan"
                                    Style="{StaticResource RailSectionTitle}"/>
                         <ProgressBar Value="{Binding Todo.ProgressPercent}" Maximum="100"
-                                     Height="4" Margin="0,0,0,6"
+                                     Height="4" Margin="0,0,0,8"
                                      Foreground="{DynamicResource TodoProgressGradient}"
                                      Background="{DynamicResource Panel3Brush}"/>
                         <ScrollViewer>
@@ -714,10 +980,10 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Agent Activity -->
+                <!-- 2. Agent Activity Feed -->
                 <Border Grid.Row="2" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-                    <DockPanel Margin="8">
-                        <TextBlock DockPanel.Dock="Top" Text="&#x1F4E1; Agent Activity"
+                    <DockPanel Margin="10,8">
+                        <TextBlock DockPanel.Dock="Top" Text="📡 Agent Activity"
                                    Style="{StaticResource RailSectionTitle}"/>
                         <ScrollViewer>
                             <ItemsControl ItemsSource="{Binding Activity.Entries}">
@@ -731,8 +997,8 @@
                                                 ToolTip="Right-click to copy">
                                             <Border.ContextMenu>
                                                 <ContextMenu>
-                                                    <MenuItem Header="Copy" Click="CopyActivity_Click"
-                                                              Icon="&#x1F4CB;"/>
+                                                    <MenuItem Header="Copy Activity" Click="CopyActivity_Click"
+                                                              Icon="📋"/>
                                                 </ContextMenu>
                                             </Border.ContextMenu>
                                             <Grid>
@@ -759,10 +1025,10 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Tool Execution -->
+                <!-- 3. Tool Execution Cards -->
                 <Border Grid.Row="3" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-                    <DockPanel Margin="8">
-                        <TextBlock DockPanel.Dock="Top" Text="&#x26A1; Tool Execution"
+                    <DockPanel Margin="10,8">
+                        <TextBlock DockPanel.Dock="Top" Text="⚡ Tool Execution"
                                    Style="{StaticResource RailSectionTitle}"/>
                         <ScrollViewer>
                             <ItemsControl ItemsSource="{Binding ToolCards.Cards}">
@@ -805,7 +1071,7 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Project Files & Diffs Tabs -->
+                <!-- 4. Project Files & Diffs Tabs -->
                 <TabControl Grid.Row="4" Margin="4,4,4,8" Background="Transparent" BorderThickness="0">
                     <TabControl.Resources>
                         <Style TargetType="TabItem">
@@ -835,7 +1101,7 @@
                     </TabControl.Resources>
 
                     <!-- Tab: Project Files -->
-                    <TabItem Header="&#x1F4C1; Files">
+                    <TabItem Header="📁 Files">
                         <DockPanel Margin="4">
                             <Border DockPanel.Dock="Bottom"
                                     Visibility="{Binding FileTree.HasPreview, Converter={StaticResource BoolToVis}}"
@@ -846,7 +1112,7 @@
                                         <TextBlock Text="{Binding FileTree.PreviewPath}" FontSize="11"
                                                    Foreground="{DynamicResource MutedBrush}" FontFamily="{DynamicResource MonoFont}"
                                                    TextTrimming="CharacterEllipsis" MaxWidth="260"/>
-                                        <Button Content="&#x2715;" Margin="8,0,0,0" Padding="4,0"
+                                        <Button Content="✕" Margin="8,0,0,0" Padding="4,0"
                                                 Command="{Binding FileTree.ClosePreviewCommand}"
                                                 Background="Transparent" BorderThickness="0"
                                                 Foreground="{DynamicResource MutedBrush}" Cursor="Hand"/>
@@ -889,7 +1155,7 @@
                     </TabItem>
 
                     <!-- Tab: Diffs & Changesets -->
-                    <TabItem Header="&#x1F500; Diffs">
+                    <TabItem Header="🔀 Diffs">
                         <ScrollViewer Margin="4">
                             <ItemsControl ItemsSource="{Binding Diff.Cards}">
                                 <ItemsControl.ItemTemplate>

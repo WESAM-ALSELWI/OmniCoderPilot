@@ -133,4 +133,14 @@ public partial class MainWindow : Window
             dlg.ShowDialog();
         }
     }
+
+    private void QuickPrompt_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn &&
+            btn.Tag is string promptText &&
+            DataContext is MainViewModel vm)
+        {
+            vm.Chat.Prompt = promptText;
+        }
+    }
 }

@@ -3,53 +3,56 @@
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!-- ═══════════════════════════════════════════════════════════════════════
-         LIGHT THEME — Minimal
+         ANTIGRAVITY LIGHT THEME — Google Antigravity Clean Design System
          ═══════════════════════════════════════════════════════════════════════ -->
 
     <!-- Backgrounds -->
-    <SolidColorBrush x:Key="BgBrush" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="SidebarBrush" Color="#F7F7F8"/>
-    <SolidColorBrush x:Key="PanelBrush" Color="#FAFAFA"/>
-    <SolidColorBrush x:Key="Panel2Brush" Color="#F3F3F4"/>
-    <SolidColorBrush x:Key="Panel3Brush" Color="#EBEBED"/>
-    <SolidColorBrush x:Key="InputBrush" Color="#F5F5F5"/>
-    <SolidColorBrush x:Key="InputBorderBrush" Color="#E0E0E0"/>
-    <SolidColorBrush x:Key="InputFocusBrush" Color="#D0D0D0"/>
+    <SolidColorBrush x:Key="BgBrush" Color="#F8F9FA"/>
+    <SolidColorBrush x:Key="SidebarBrush" Color="#F1F3F5"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Panel2Brush" Color="#EDF0F3"/>
+    <SolidColorBrush x:Key="Panel3Brush" Color="#E4E7EB"/>
+    <SolidColorBrush x:Key="InputBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="InputBorderBrush" Color="#D1D5DB"/>
+    <SolidColorBrush x:Key="InputFocusBrush" Color="#2563EB"/>
 
     <!-- Borders -->
-    <SolidColorBrush x:Key="BorderBrush" Color="#E5E5E5"/>
-    <SolidColorBrush x:Key="Border2Brush" Color="#D4D4D4"/>
-    <SolidColorBrush x:Key="DividerBrush" Color="#EBEBEB"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="#E5E7EB"/>
+    <SolidColorBrush x:Key="Border2Brush" Color="#D1D5DB"/>
+    <SolidColorBrush x:Key="DividerBrush" Color="#E5E7EB"/>
 
     <!-- Text -->
-    <SolidColorBrush x:Key="TextBrush" Color="#171717"/>
-    <SolidColorBrush x:Key="Text2Brush" Color="#404040"/>
-    <SolidColorBrush x:Key="MutedBrush" Color="#737373"/>
-    <SolidColorBrush x:Key="Muted2Brush" Color="#A3A3A3"/>
-    <SolidColorBrush x:Key="PlaceholderBrush" Color="#A3A3A3"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#111827"/>
+    <SolidColorBrush x:Key="Text2Brush" Color="#374151"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#6B7280"/>
+    <SolidColorBrush x:Key="Muted2Brush" Color="#9CA3AF"/>
+    <SolidColorBrush x:Key="PlaceholderBrush" Color="#9CA3AF"/>
 
-    <!-- Accents (same as dark) -->
+    <!-- Accents -->
     <SolidColorBrush x:Key="AccentBrush" Color="#2563EB"/>
-    <SolidColorBrush x:Key="Accent2Brush" Color="#16A34A"/>
-    <SolidColorBrush x:Key="Accent3Brush" Color="#9333EA"/>
+    <SolidColorBrush x:Key="Accent2Brush" Color="#059669"/>
+    <SolidColorBrush x:Key="Accent3Brush" Color="#7C3AED"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
     <SolidColorBrush x:Key="WarnBrush" Color="#D97706"/>
+    <SolidColorBrush x:Key="AuroraPinkBrush" Color="#DB2777"/>
+    <SolidColorBrush x:Key="CyanBrush" Color="#0891B2"/>
 
     <!-- Tool step border colors -->
-    <SolidColorBrush x:Key="EditBrush" Color="#16A34A"/>
-    <SolidColorBrush x:Key="WriteBrush" Color="#16A34A"/>
+    <SolidColorBrush x:Key="EditBrush" Color="#059669"/>
+    <SolidColorBrush x:Key="WriteBrush" Color="#059669"/>
     <SolidColorBrush x:Key="ReadBrush" Color="#2563EB"/>
     <SolidColorBrush x:Key="ExploreBrush" Color="#2563EB"/>
     <SolidColorBrush x:Key="SearchBrush" Color="#7C3AED"/>
     <SolidColorBrush x:Key="CommandBrush" Color="#D97706"/>
     <SolidColorBrush x:Key="DeleteBrush" Color="#DC2626"/>
-    <SolidColorBrush x:Key="WebBrush" Color="#0284C7"/>
+    <SolidColorBrush x:Key="WebBrush" Color="#0891B2"/>
     <SolidColorBrush x:Key="TaskBrush" Color="#EA580C"/>
 
     <!-- Gradients -->
     <LinearGradientBrush x:Key="TitleGradient" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#2563EB" Offset="0"/>
-        <GradientStop Color="#7C3AED" Offset="1"/>
+        <GradientStop Color="#7C3AED" Offset="0.5"/>
+        <GradientStop Color="#DB2777" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
@@ -59,63 +62,71 @@
 
     <LinearGradientBrush x:Key="ProgressGradient" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#2563EB" Offset="0"/>
-        <GradientStop Color="#8B5CF6" Offset="1"/>
+        <GradientStop Color="#7C3AED" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="TodoProgressGradient" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#2563EB" Offset="0"/>
-        <GradientStop Color="#16A34A" Offset="1"/>
+        <GradientStop Color="#059669" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="BrandGradient" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#2563EB" Offset="0"/>
+        <GradientStop Color="#7C3AED" Offset="0.5"/>
+        <GradientStop Color="#DB2777" Offset="1"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="SendButtonGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#2563EB" Offset="0"/>
         <GradientStop Color="#7C3AED" Offset="1"/>
     </LinearGradientBrush>
 
     <!-- Activity banner gradients -->
     <LinearGradientBrush x:Key="ActivityThinkingBrush" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#EFF6FF" Offset="0"/>
-        <GradientStop Color="#FFFFFF" Offset="1"/>
+        <GradientStop Color="#F5F3FF" Offset="0"/>
+        <GradientStop Color="#F8F9FA" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="ActivityToolRunningBrush" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#FFFBEB" Offset="0"/>
-        <GradientStop Color="#FFFFFF" Offset="1"/>
+        <GradientStop Color="#F8F9FA" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="ActivityErrorBrush" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#FEF2F2" Offset="0"/>
-        <GradientStop Color="#FFFFFF" Offset="1"/>
+        <GradientStop Color="#F8F9FA" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="ActivityCompletedBrush" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#F0FDF4" Offset="0"/>
-        <GradientStop Color="#FFFFFF" Offset="1"/>
+        <GradientStop Color="#F8F9FA" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="ActivityPermissionBrush" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#FDF2F8" Offset="0"/>
-        <GradientStop Color="#FFFFFF" Offset="1"/>
+        <GradientStop Color="#F8F9FA" Offset="1"/>
     </LinearGradientBrush>
 
-    <!-- User message tint -->
+    <!-- Chat Message Surfaces -->
     <SolidColorBrush x:Key="UserMessageBrush" Color="#EFF6FF"/>
-
-    <!-- Code block background -->
-    <SolidColorBrush x:Key="CodeBgBrush" Color="#F5F5F5"/>
+    <SolidColorBrush x:Key="UserMessageBorderBrush" Color="#BFDBFE"/>
+    <SolidColorBrush x:Key="ReasoningBgBrush" Color="#F5F3FF"/>
+    <SolidColorBrush x:Key="ReasoningBorderBrush" Color="#DDD6FE"/>
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#F3F4F6"/>
+    <SolidColorBrush x:Key="CodeBorderBrush" Color="#E5E7EB"/>
 
     <!-- Diff colors -->
-    <SolidColorBrush x:Key="DiffAddedBrush" Color="#16A34A"/>
+    <SolidColorBrush x:Key="DiffAddedBrush" Color="#059669"/>
     <SolidColorBrush x:Key="DiffRemovedBrush" Color="#DC2626"/>
     <SolidColorBrush x:Key="DiffHunkBrush" Color="#2563EB"/>
 
     <!-- Online indicator -->
-    <SolidColorBrush x:Key="OnlineBrush" Color="#16A34A"/>
-    <SolidColorBrush x:Key="OfflineBrush" Color="#A3A3A3"/>
+    <SolidColorBrush x:Key="OnlineBrush" Color="#059669"/>
+    <SolidColorBrush x:Key="OfflineBrush" Color="#9CA3AF"/>
 
     <!-- Fonts -->
-    <FontFamily x:Key="DefaultFont" x:Shared="False">Segoe UI, system-ui, sans-serif</FontFamily>
-    <FontFamily x:Key="MonoFont" x:Shared="False">Cascadia Code, Consolas, Courier New, monospace</FontFamily>
+    <FontFamily x:Key="DefaultFont" x:Shared="False">Segoe UI Variable Text, Segoe UI, Inter, system-ui, sans-serif</FontFamily>
+    <FontFamily x:Key="MonoFont" x:Shared="False">Cascadia Code, JetBrains Mono, Consolas, Courier New, monospace</FontFamily>
 
     <!-- Font Sizes -->
     <sys:Double x:Key="FontSizeBody">14</sys:Double>
@@ -127,11 +138,14 @@
     <!-- CornerRadius -->
     <CornerRadius x:Key="RadiusCorner">12</CornerRadius>
     <CornerRadius x:Key="RadiusSmCorner">8</CornerRadius>
+    <CornerRadius x:Key="RadiusLgCorner">18</CornerRadius>
     <CornerRadius x:Key="RadiusPill">99</CornerRadius>
 
     <!-- Shadows -->
     <DropShadowEffect x:Key="SmShadow" BlurRadius="8" ShadowDepth="1" Opacity="0.08" Color="Black"/>
     <DropShadowEffect x:Key="MdShadow" BlurRadius="20" ShadowDepth="4" Opacity="0.12" Color="Black"/>
     <DropShadowEffect x:Key="LgShadow" BlurRadius="40" ShadowDepth="8" Opacity="0.15" Color="Black"/>
+    <DropShadowEffect x:Key="GlowAccentShadow" BlurRadius="16" ShadowDepth="0" Opacity="0.25" Color="#2563EB"/>
+    <DropShadowEffect x:Key="GlowThinkingShadow" BlurRadius="16" ShadowDepth="0" Opacity="0.2" Color="#7C3AED"/>
 
 </ResourceDictionary>
