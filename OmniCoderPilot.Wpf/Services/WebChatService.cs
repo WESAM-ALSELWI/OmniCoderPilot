@@ -507,8 +507,12 @@ public sealed class WebChatService : IWebChatService, IDisposable
     private async Task<int> GetAssistantMessageCountAsync(SiteState site)
     {
         var js = "(function(){"
-               + "  var els = document.querySelectorAll('[data-message-author-role=\"assistant\"], .ds-markdown, [class*=\"ds-markdown\"]');"
-               + "  return String(els.length);"
+               + "  var cg = document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
+               + "  if (cg.length > 0) return String(cg.length);"
+               + "  var ds = document.querySelectorAll('.ds-markdown, [class*=\"ds-markdown\"]');"
+               + "  if (ds.length > 0) return String(ds.length);"
+               + "  var gen = document.querySelectorAll('[class*=\"assistant\"], [class*=\"bot-msg\"], [class*=\"ai-message\"]');"
+               + "  return String(gen.length);"
                + "})()";
         var r = await ExecScriptStringAsync(site, js);
         return int.TryParse(r, out var n) ? n : 0;
@@ -597,36 +601,25 @@ public sealed class WebChatService : IWebChatService, IDisposable
         var snap = snapshotCount.ToString();
         var js = "(function(){"
             + "  var snap = " + snap + ";"
-            + "  var isGen = !!document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]');"
-
-            // ChatGPT: if there is only 1 user message and 1 assistant message, reset snap to 0
             + "  var cg = document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
-            + "  var userMsgs = document.querySelectorAll('[data-message-author-role=\"user\"]');"
-            + "  if (userMsgs.length === 1 && cg.length === 1) { snap = 0; }"
-
-            + "  if (cg.length > snap || (isGen && cg.length >= snap && cg.length > 0)) {"
+            + "  if (cg.length > snap) {"
             + "    var el = cg[cg.length - 1];"
             + "    var textEl = el.querySelector('.markdown, .prose, [class*=\"markdown\"], [class*=\"whitespace-pre-wrap\"]') || el;"
             + "    var t = (textEl.innerText || textEl.textContent || '').trim();"
             + "    if (t.length > 0) return t;"
             + "  }"
-
-            // DeepSeek
             + "  var ds = document.querySelectorAll('.ds-markdown, [class*=\"ds-markdown\"]');"
-            + "  if (ds.length > snap || (isGen && ds.length >= snap && ds.length > 0)) {"
+            + "  if (ds.length > snap) {"
             + "    var el = ds[ds.length - 1];"
             + "    var t = (el.innerText || el.textContent || '').trim();"
             + "    if (t.length > 0) return t;"
             + "  }"
-
-            // Generic fallback
             + "  var gen = document.querySelectorAll('[class*=\"assistant\"], [class*=\"bot-msg\"], [class*=\"ai-message\"]');"
-            + "  if (gen.length > snap || (isGen && gen.length >= snap && gen.length > 0)) {"
+            + "  if (gen.length > snap) {"
             + "    var el = gen[gen.length - 1];"
             + "    var t = (el.innerText || el.textContent || '').trim();"
             + "    if (t.length > 0) return t;"
             + "  }"
-
             + "  return '';"
             + "})()";
 

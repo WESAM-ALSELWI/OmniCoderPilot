@@ -295,8 +295,8 @@ public sealed class AgentOrchestrator(
                 {
                     state.ConsecutiveNoTools++;
 
-                    // Conversational tasks where tools aren't needed, or WebChat after executing tools
-                    if ((isWebChat && state.ExecutedAnyTool) || (!state.ExecutedAnyTool && !LooksLikeWorkspaceTask(request.Prompt)))
+                    // Conversational tasks where tools aren't needed, or WebChat when no tools were requested
+                    if (isWebChat || (!state.ExecutedAnyTool && !LooksLikeWorkspaceTask(request.Prompt)))
                     {
                         var final = visibleText.Trim();
                         if (string.IsNullOrWhiteSpace(final) && state.ExecutedAnyTool)

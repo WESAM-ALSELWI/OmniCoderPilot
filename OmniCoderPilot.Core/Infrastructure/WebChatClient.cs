@@ -45,11 +45,15 @@ public sealed class WebChatClient(IWebChatService webChat) : IOllamaClient
             }
         }
 
-        bool hasToolHistory = messages.Any(m => m.Role == "tool");
-        bool isNewChat = !hasToolHistory;
-        var prompt = BuildNaturalAgentPrompt(messages, isNewChat);
+        // Determine if this is Turn 1 of Prompt 1 (start of a new conversation)
+        int userCount = messages.Count(m => m.Role == "user");
+        bool hasRecentTools = messages.LastOrDefault()?.Role == "tool";
+        bool isFirstPromptFirstTurn = userCount <= 1 && !hasRecentTools && !messages.Any(m => m.Role == "tool");
+        bool startNewChat = isFirstPromptFirstTurn;
 
-        await foreach (var token in webChat.SendMessageForModelAsync(model, prompt, ct, startNewChat: isNewChat).WithCancellation(ct))
+        var prompt = BuildNaturalAgentPrompt(messages, isFirstPromptFirstTurn);
+
+        await foreach (var token in webChat.SendMessageForModelAsync(model, prompt, ct, startNewChat: startNewChat).WithCancellation(ct))
             yield return token;
     }
 
@@ -75,24 +79,13 @@ public sealed class WebChatClient(IWebChatService webChat) : IOllamaClient
             yield return new StreamingToolChunk(token);
     }
 
-    private static string BuildNaturalAgentPrompt(IReadOnlyList<OllamaChatMessage> messages, bool isNewChat)
+    private static string BuildNaturalAgentPrompt(IReadOnlyList<OllamaChatMessage> messages, bool isFirstPromptFirstTurn)
     {
-        if (isNewChat)
+        // ── Case 1: First turn of Prompt 1 (New Conversation) ──
+        if (isFirstPromptFirstTurn)
         {
-            // Extract the user's task
-            string userTask = "";
-            for (int i = messages.Count - 1; i >= 0; i--)
-            {
-                if (messages[i].Role == "user")
-                {
-                    userTask = messages[i].Content;
-                    break;
-                }
-            }
-            if (string.IsNullOrWhiteSpace(userTask))
-                userTask = messages.LastOrDefault()?.Content ?? "Help with the project";
+            string userTask = messages.LastOrDefault(m => m.Role == "user")?.Content ?? "Help with the project";
 
-            // Extract workspace context from system message if available
             var systemMsg = messages.FirstOrDefault(m => m.Role == "system")?.Content ?? "";
             string workspaceInfo = "";
             var wsMatch = System.Text.RegularExpressions.Regex.Match(systemMsg, @"Workspace Root:?\s*([^\r\n]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -125,56 +118,69 @@ public sealed class WebChatClient(IWebChatService webChat) : IOllamaClient
             sb.AppendLine("Please analyze the task, plan the steps, and output the first tool JSON block to run.");
             return sb.ToString();
         }
-        else
+
+        // ── Case 2: Tool execution results turn ──
+        int lastAssistantIdx = -1;
+        for (int i = messages.Count - 1; i >= 0; i--)
         {
-            // Continuation turn: return the tool results naturally
-            var sb = new StringBuilder();
-
-            int lastAssistantIdx = -1;
-            for (int i = messages.Count - 1; i >= 0; i--)
+            if (messages[i].Role == "assistant")
             {
-                if (messages[i].Role == "assistant")
-                {
-                    lastAssistantIdx = i;
-                    break;
-                }
+                lastAssistantIdx = i;
+                break;
             }
+        }
 
-            var recentToolMessages = messages
-                .Skip(lastAssistantIdx + 1)
-                .Where(m => m.Role == "tool")
-                .ToList();
+        var recentToolMessages = messages
+            .Skip(lastAssistantIdx + 1)
+            .Where(m => m.Role == "tool")
+            .ToList();
 
-            if (recentToolMessages.Count > 0)
+        if (recentToolMessages.Count > 0)
+        {
+            var sb = new StringBuilder();
+            if (recentToolMessages.Count == 1)
             {
-                if (recentToolMessages.Count == 1)
-                {
-                    var tm = recentToolMessages[0];
-                    var toolName = tm.ToolName ?? "action";
-                    sb.AppendLine($"I executed the '{toolName}' action. Here is the output:");
-                    sb.AppendLine("```");
-                    sb.AppendLine(tm.Content);
-                    sb.AppendLine("```");
-                }
-                else
-                {
-                    sb.AppendLine("I executed the actions you requested. Here are the outputs:\n");
-                    foreach (var tm in recentToolMessages)
-                    {
-                        var toolName = tm.ToolName ?? "action";
-                        sb.AppendLine($"--- Output of '{toolName}' ---");
-                        sb.AppendLine(tm.Content);
-                        sb.AppendLine("----------------------------\n");
-                    }
-                }
-                sb.AppendLine("\nWhat is our next step? (If another action is needed, output the tool JSON block. If finished, provide the final answer.)");
+                var tm = recentToolMessages[0];
+                var toolName = tm.ToolName ?? "action";
+                sb.AppendLine($"I executed the '{toolName}' action. Here is the output:");
+                sb.AppendLine("```");
+                sb.AppendLine(tm.Content);
+                sb.AppendLine("```");
             }
             else
             {
-                sb.AppendLine("Please specify the next action by outputting a tool JSON block (e.g. ListDirectory, ReadFile, or ExecuteCommand) so my software can run it for you. If you are finished, provide your final response.");
+                sb.AppendLine("I executed the actions you requested. Here are the outputs:\n");
+                foreach (var tm in recentToolMessages)
+                {
+                    var toolName = tm.ToolName ?? "action";
+                    sb.AppendLine($"--- Output of '{toolName}' ---");
+                    sb.AppendLine(tm.Content);
+                    sb.AppendLine("----------------------------\n");
+                }
             }
-
+            sb.AppendLine("\nWhat is our next step? (If another action is needed, output the tool JSON block. If finished, provide the final answer.)");
             return sb.ToString();
         }
+
+        // ── Case 3: Endless subsequent user prompts (Prompt 2, Prompt 3, Prompt 4...) ──
+        var lastUserMsg = messages.LastOrDefault(m => m.Role == "user")?.Content ?? "";
+
+        // Check if this is an internal orchestrator redirect
+        if (lastUserMsg.Contains("You have not called any tools") || lastUserMsg.Contains("CRITICAL:") || lastUserMsg.Contains("TodoWrite"))
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Please specify the tool to execute using a JSON block so I can run it for you locally on the workspace. For example:");
+            sb.AppendLine("```json");
+            sb.AppendLine("{\"tool\": \"ListDirectory\", \"arguments\": {\"relativePath\": \"\"}}");
+            sb.AppendLine("```");
+            sb.AppendLine("What tool should I execute first?");
+            return sb.ToString();
+        }
+
+        // The user's new prompt in the ongoing conversation!
+        var userSb = new StringBuilder();
+        userSb.AppendLine(lastUserMsg);
+        userSb.AppendLine("\n(If you need to perform an action, output the tool JSON block so my software can run it for you. If no action is needed, answer directly.)");
+        return userSb.ToString();
     }
 }
