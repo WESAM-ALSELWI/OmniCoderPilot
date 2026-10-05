@@ -1,4 +1,4 @@
-﻿namespace OmniCoderPilot.Domain;
+namespace OmniCoderPilot.Domain;
 
 
 public sealed class Workspace
@@ -16,6 +16,7 @@ public sealed class Conversation
     public Guid WorkspaceId { get; set; }
     public Workspace? Workspace { get; set; }
     public string Title { get; set; } = "New conversation";
+    public string? WebChatUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<ChatMessage> Messages { get; set; } = [];

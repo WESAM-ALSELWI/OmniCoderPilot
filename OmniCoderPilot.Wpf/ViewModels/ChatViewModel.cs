@@ -43,6 +43,13 @@ public partial class ChatViewModel : ObservableObject
         {
             ConversationId = e.ConversationId;
             await LoadHistory(e.ConversationId);
+            var webChat = _services.GetService<OmniCoderPilot.Application.IWebChatService>();
+            if (webChat is not null)
+            {
+                await using var db = await _dbFactory.CreateDbContextAsync();
+                var c = await db.Conversations.FindAsync(e.ConversationId);
+                webChat.SetActiveConversation(e.ConversationId, c?.WebChatUrl);
+            }
         });
     }
 

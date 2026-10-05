@@ -57,11 +57,30 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
     private readonly Dictionary<string, SiteState> _sites;
     private readonly Dispatcher _dispatcher;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _threadUrls = new();
+    private Guid? _activeConversationId;
     private bool _disposed;
 
     public string ChatUrl      => KnownSites[0].Url;
     public string ProviderName => KnownSites[0].DisplayName;
     public bool   IsLoggedIn   => _sites.Values.Any(s => s.IsLoggedIn);
+    public Guid?  ActiveConversationId => _activeConversationId;
+
+    public event Action<Guid, string>? ThreadUrlUpdated;
+
+    public void SetActiveConversation(Guid conversationId, string? existingThreadUrl = null)
+    {
+        _activeConversationId = conversationId;
+        if (!string.IsNullOrWhiteSpace(existingThreadUrl))
+        {
+            _threadUrls[conversationId] = existingThreadUrl;
+        }
+    }
+
+    public string? GetThreadUrlForConversation(Guid conversationId)
+    {
+        return _threadUrls.TryGetValue(conversationId, out var url) ? url : null;
+    }
 
     public WebChatService(Dispatcher dispatcher)
     {
@@ -80,10 +99,10 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
     // ── IWebChatService ───────────────────────────────────────────────────────
     public Task<bool>               ShowLoginAsync(CancellationToken ct)                          => ShowLoginForSiteAsync(_sites.Values.First(), ct);
-    public IAsyncEnumerable<string> SendMessageAsync(string msg, CancellationToken ct)            => SendMessageToSiteAsync(_sites.Values.First(), msg, false, ct);
+    public IAsyncEnumerable<string> SendMessageAsync(string msg, CancellationToken ct)            => SendMessageToSiteAsync(_sites.Values.First(), msg, null, false, ct);
     public bool                     IsLoggedInFor(string model)                                   => GetSite(model).IsLoggedIn;
     public Task<bool>               ShowLoginForModelAsync(string model, CancellationToken ct)    => ShowLoginForSiteAsync(GetSite(model), ct);
-    public IAsyncEnumerable<string> SendMessageForModelAsync(string model, string msg, CancellationToken ct, bool startNewChat = false) => SendMessageToSiteAsync(GetSite(model), msg, startNewChat, ct);
+    public IAsyncEnumerable<string> SendMessageForModelAsync(string model, string msg, CancellationToken ct, Guid? conversationId = null, bool startNewChat = false) => SendMessageToSiteAsync(GetSite(model), msg, conversationId, startNewChat, ct);
     public string                   GetDisplayNameFor(string model)                               => GetSite(model).Config.DisplayName;
     public Task                     LogoutAsync(string model)                                     => LogoutSiteAsync(GetSite(model));
     public Task<bool>               SwitchAccountAsync(string model, CancellationToken ct)        => SwitchAccountForSiteAsync(GetSite(model), ct);
@@ -247,7 +266,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
     // Send + Stream
     // ═════════════════════════════════════════════════════════════════════════
     private async IAsyncEnumerable<string> SendMessageToSiteAsync(
-        SiteState site, string message, bool startNewChat,
+        SiteState site, string message, Guid? conversationId, bool startNewChat,
         [EnumeratorCancellation] CancellationToken ct)
     {
         await EnsureInitializedAsync(site);
@@ -262,9 +281,31 @@ public sealed class WebChatService : IWebChatService, IDisposable
             }
         }
 
-        if (startNewChat)
+        var convId = conversationId ?? _activeConversationId;
+        string? savedThreadUrl = null;
+        bool hasKnownThread = convId.HasValue && _threadUrls.TryGetValue(convId.Value, out savedThreadUrl) && !string.IsNullOrWhiteSpace(savedThreadUrl);
+
+        if (hasKnownThread)
         {
+            // We ALREADY have a web chat thread for this OmniCoderPilot conversation!
+            // Ensure WebView2 is on this thread:
+            var currentUrl = await ExecScriptStringAsync(site, "window.location.href");
+            if (!IsSameThreadUrl(currentUrl, savedThreadUrl!))
+            {
+                await _dispatcher.InvokeAsync(() => site.WebView!.CoreWebView2.Navigate(savedThreadUrl!));
+                await Task.Delay(2000, ct);
+            }
+            // If already on the same thread, DO NOT TOUCH THE URL! Stay right here!
+        }
+        else if (startNewChat || (convId.HasValue && _activeConversationId.HasValue && _activeConversationId != convId))
+        {
+            // Brand new OmniCoderPilot conversation without a known thread: start a fresh chat on web chat
             await NavigateToNewChatAsync(site, ct);
+        }
+
+        if (convId.HasValue)
+        {
+            _activeConversationId = convId.Value;
         }
 
         bool inputReady = await WaitForInputAsync(site, ct, timeoutSeconds: 15);
@@ -294,7 +335,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
         // Stream the response (only messages appearing AFTER snapshot)
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true });
-        _ = Task.Run(() => PollResponseAsync(site, snapshotCount, channel.Writer, ct), ct);
+        _ = Task.Run(() => PollResponseAsync(site, snapshotCount, convId, channel.Writer, ct), ct);
         await foreach (var token in channel.Reader.ReadAllAsync(ct))
             yield return token;
     }
@@ -519,7 +560,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
     }
 
     private async Task PollResponseAsync(
-        SiteState site, int snapshotCount,
+        SiteState site, int snapshotCount, Guid? convId,
         ChannelWriter<string> writer, CancellationToken ct)
     {
         try
@@ -556,6 +597,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
             }
 
             await writer.WriteAsync(lastText, ct);
+            await TryCaptureThreadUrlAsync(site, convId);
 
             // Stream subsequent chunks as text grows
             while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
@@ -590,10 +632,55 @@ public sealed class WebChatService : IWebChatService, IDisposable
                     }
                 }
             }
+
+            await TryCaptureThreadUrlAsync(site, convId);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { try { await writer.WriteAsync($"\n⚠️ {ex.Message}", ct); } catch { } }
         finally { writer.Complete(); }
+    }
+
+    private async Task TryCaptureThreadUrlAsync(SiteState site, Guid? convId)
+    {
+        if (!convId.HasValue) return;
+        try
+        {
+            var url = await ExecScriptStringAsync(site, "window.location.href");
+            if (IsThreadUrl(url, site))
+            {
+                if (!_threadUrls.TryGetValue(convId.Value, out var existing) || existing != url)
+                {
+                    _threadUrls[convId.Value] = url;
+                    ThreadUrlUpdated?.Invoke(convId.Value, url);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private static bool IsThreadUrl(string url, SiteState site)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        var clean = url.Split('?')[0].TrimEnd('/');
+        var baseClean = site.Config.Url.Split('?')[0].TrimEnd('/');
+
+        if (clean.Equals(baseClean, StringComparison.OrdinalIgnoreCase)) return false;
+
+        // ChatGPT thread URL pattern: https://chatgpt.com/c/<uuid>
+        if (clean.Contains("/c/", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // DeepSeek thread URL pattern: https://chat.deepseek.com/a/chat/s/<uuid>
+        if (clean.Contains("/chat/", StringComparison.OrdinalIgnoreCase)) return true;
+
+        return clean.Length > baseClean.Length + 4;
+    }
+
+    private static bool IsSameThreadUrl(string u1, string u2)
+    {
+        if (string.IsNullOrWhiteSpace(u1) || string.IsNullOrWhiteSpace(u2)) return false;
+        var c1 = u1.Split('?')[0].TrimEnd('/');
+        var c2 = u2.Split('?')[0].TrimEnd('/');
+        return c1.Equals(c2, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<string> GetLatestResponseTextAsync(SiteState site, int snapshotCount)

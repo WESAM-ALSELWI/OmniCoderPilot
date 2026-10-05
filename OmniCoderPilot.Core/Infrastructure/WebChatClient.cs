@@ -45,15 +45,30 @@ public sealed class WebChatClient(IWebChatService webChat) : IOllamaClient
             }
         }
 
-        // Determine if this is Turn 1 of Prompt 1 (start of a new conversation)
+        var convId = webChat.ActiveConversationId;
+        bool hasKnownThread = convId.HasValue && !string.IsNullOrWhiteSpace(webChat.GetThreadUrlForConversation(convId.Value));
+
+        // Determine if this is Turn 1 of Prompt 1 (start of a new conversation thread)
         int userCount = messages.Count(m => m.Role == "user");
         bool hasRecentTools = messages.LastOrDefault()?.Role == "tool";
-        bool isFirstPromptFirstTurn = userCount <= 1 && !hasRecentTools && !messages.Any(m => m.Role == "tool");
-        bool startNewChat = isFirstPromptFirstTurn;
+        bool isFirstPromptFirstTurn;
 
+        if (convId.HasValue)
+        {
+            // Direct 1-to-1 conversation mapping:
+            // If the thread URL already exists for this conversation, this is NEVER the first turn!
+            // If it does not exist yet, and no tools have run, it IS the first turn.
+            isFirstPromptFirstTurn = !hasKnownThread && !hasRecentTools && !messages.Any(m => m.Role == "tool");
+        }
+        else
+        {
+            isFirstPromptFirstTurn = userCount <= 1 && !hasRecentTools && !messages.Any(m => m.Role == "tool");
+        }
+
+        bool startNewChat = isFirstPromptFirstTurn;
         var prompt = BuildNaturalAgentPrompt(messages, isFirstPromptFirstTurn);
 
-        await foreach (var token in webChat.SendMessageForModelAsync(model, prompt, ct, startNewChat: startNewChat).WithCancellation(ct))
+        await foreach (var token in webChat.SendMessageForModelAsync(model, prompt, ct, conversationId: convId, startNewChat: startNewChat).WithCancellation(ct))
             yield return token;
     }
 

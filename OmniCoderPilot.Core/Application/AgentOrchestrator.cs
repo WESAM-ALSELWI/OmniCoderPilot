@@ -32,7 +32,8 @@ public sealed class AgentOrchestrator(
     IConfiguration config,
     IContextCompactor? compactor = null,
     ISubAgentManager? subAgentManager = null,
-    ISkillLoader? skillLoader = null) : IAgentOrchestrator
+    ISkillLoader? skillLoader = null,
+    IWebChatService? webChatService = null) : IAgentOrchestrator
 {
     private readonly IReadOnlyDictionary<string, IAgentTool> _tools =
         tools.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
@@ -63,14 +64,26 @@ public sealed class AgentOrchestrator(
         };
 
         db.TaskRuns.Add(run);
-        db.Messages.Add(new ChatMessage
+
+        // Avoid duplicate user message if already persisted by caller
+        var alreadySavedUser = await db.Messages.AnyAsync(m =>
+            m.ConversationId == request.ConversationId &&
+            m.Role == ChatRole.User &&
+            m.Content == request.Prompt &&
+            m.CreatedAt >= DateTimeOffset.UtcNow.AddSeconds(-30),
+            request.CancellationToken);
+        if (!alreadySavedUser)
         {
-            ConversationId = request.ConversationId,
-            Role = ChatRole.User,
-            Content = request.Prompt,
-            TokenEstimate = EstimateTokens(request.Prompt)
-        });
-        await db.SaveChangesAsync(request.CancellationToken);
+            db.Messages.Add(new ChatMessage
+            {
+                ConversationId = request.ConversationId,
+                Role = ChatRole.User,
+                Content = request.Prompt,
+                TokenEstimate = EstimateTokens(request.Prompt)
+            });
+            await db.SaveChangesAsync(request.CancellationToken);
+        }
+
         await sink.StatusAsync(request.ConnectionId, run.Id, "Analysing request…", 3);
         await sink.AgentActivityAsync(request.ConnectionId, request.ConversationId,
             "🧠 Reading your request and building workspace context…", "thinking");
@@ -80,13 +93,21 @@ public sealed class AgentOrchestrator(
             var ws = await db.Workspaces.FindAsync([request.WorkspaceId], request.CancellationToken)
                 ?? throw new InvalidOperationException("Workspace not found.");
 
-            // Auto-title conversation
+            // Auto-title conversation & sync 1-to-1 WebChat thread
             var conv = await db.Conversations.FindAsync([request.ConversationId], request.CancellationToken);
-            if (conv is not null && (conv.Title == "New conversation" || conv.Title == "New chat"))
+            if (conv is not null)
             {
-                conv.Title = request.Prompt.Length <= 60 ? request.Prompt : request.Prompt[..57] + "…";
-                conv.UpdatedAt = DateTimeOffset.UtcNow;
-                await db.SaveChangesAsync(request.CancellationToken);
+                if (conv.Title == "New conversation" || conv.Title == "New chat")
+                {
+                    conv.Title = request.Prompt.Length <= 60 ? request.Prompt : request.Prompt[..57] + "…";
+                    conv.UpdatedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(request.CancellationToken);
+                }
+                webChatService?.SetActiveConversation(request.ConversationId, conv.WebChatUrl);
+            }
+            else
+            {
+                webChatService?.SetActiveConversation(request.ConversationId);
             }
 
             var priorMessages = (await db.Messages
@@ -540,17 +561,33 @@ public sealed class AgentOrchestrator(
                 await sink.TokenAsync(request.ConnectionId, request.ConversationId, answer);
             }
 
-            db.Messages.Add(new ChatMessage
+            var alreadySavedAssistant = await db.Messages.AnyAsync(m =>
+                m.ConversationId == request.ConversationId &&
+                m.Role == ChatRole.Assistant &&
+                m.Content == answer &&
+                m.CreatedAt >= DateTimeOffset.UtcNow.AddSeconds(-30),
+                request.CancellationToken);
+            if (!alreadySavedAssistant)
             {
-                ConversationId = request.ConversationId,
-                Role = ChatRole.Assistant,
-                Content = answer,
-                TokenEstimate = EstimateTokens(answer)
-            });
+                db.Messages.Add(new ChatMessage
+                {
+                    ConversationId = request.ConversationId,
+                    Role = ChatRole.Assistant,
+                    Content = answer,
+                    TokenEstimate = EstimateTokens(answer)
+                });
+            }
             await memory.CaptureTurnAsync(request.WorkspaceId, request.Prompt, answer, request.CancellationToken);
 
             if (conv is not null)
+            {
+                var threadUrl = webChatService?.GetThreadUrlForConversation(request.ConversationId);
+                if (!string.IsNullOrEmpty(threadUrl) && conv.WebChatUrl != threadUrl)
+                {
+                    conv.WebChatUrl = threadUrl;
+                }
                 conv.UpdatedAt = DateTimeOffset.UtcNow;
+            }
 
             run.Status = AgentTaskStatus.Completed;
             run.ProgressPercent = 100;

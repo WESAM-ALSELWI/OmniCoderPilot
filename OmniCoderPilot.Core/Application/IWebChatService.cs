@@ -28,8 +28,14 @@ public interface IWebChatService
 
     /// <summary>
     /// Send a message to the site that matches <paramref name="modelName"/> and stream back tokens.
+    /// Supports 1-to-1 conversation mapping when <paramref name="conversationId"/> is provided.
     /// </summary>
-    IAsyncEnumerable<string> SendMessageForModelAsync(string modelName, string message, CancellationToken ct, bool startNewChat = false);
+    IAsyncEnumerable<string> SendMessageForModelAsync(
+        string modelName,
+        string message,
+        CancellationToken ct,
+        Guid? conversationId = null,
+        bool startNewChat = false);
 
     /// <summary>Display name for a given model name, e.g. "ChatGPT Web" for "webchat/chatgpt".</summary>
     string GetDisplayNameFor(string modelName);
@@ -43,4 +49,22 @@ public interface IWebChatService
     /// Log out the current account, then open the visible login window for the user to log in with a different account.
     /// </summary>
     Task<bool> SwitchAccountAsync(string modelName, CancellationToken ct);
+
+    /// <summary>The currently active OmniCoderPilot conversation ID (if any).</summary>
+    Guid? ActiveConversationId { get; }
+
+    /// <summary>
+    /// Sets or syncs the active OmniCoderPilot conversation ID and optional known thread URL.
+    /// </summary>
+    void SetActiveConversation(Guid conversationId, string? existingThreadUrl = null);
+
+    /// <summary>
+    /// Gets the captured web chat thread URL for a given OmniCoderPilot conversation (if any).
+    /// </summary>
+    string? GetThreadUrlForConversation(Guid conversationId);
+
+    /// <summary>
+    /// Event fired whenever a conversation's Web Chat thread URL is captured or updated.
+    /// </summary>
+    event Action<Guid, string>? ThreadUrlUpdated;
 }

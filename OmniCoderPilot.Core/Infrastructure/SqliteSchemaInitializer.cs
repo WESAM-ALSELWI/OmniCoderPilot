@@ -1,4 +1,4 @@
-﻿using System.Data.Common;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 
 namespace OmniCoderPilot.Infrastructure;
@@ -14,6 +14,7 @@ public static class SqliteSchemaInitializer
         {
             await EnsureColumnAsync(connection, "Conversations", "UpdatedAt", "TEXT NOT NULL DEFAULT '2026-06-09T00:00:00.0000000+00:00'", ct);
             await EnsureColumnAsync(connection, "Conversations", "Title", "TEXT NOT NULL DEFAULT 'New chat'", ct);
+            await EnsureColumnAsync(connection, "Conversations", "WebChatUrl", "TEXT NULL", ct);
             await EnsureColumnAsync(connection, "Messages", "MetadataJson", "TEXT NULL", ct);
             await EnsureColumnAsync(connection, "Messages", "TokenEstimate", "INTEGER NOT NULL DEFAULT 1", ct);
             await EnsureColumnAsync(connection, "Memories", "Kind", "TEXT NOT NULL DEFAULT 'conversation'", ct);
