@@ -161,7 +161,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
                 var wv = new WebView2();
                 var host = new Window
                 {
-                    Width = 1, Height = 1,
+                    Width = 1280, Height = 900,
                     Left = -32000, Top = -32000,
                     ShowInTaskbar = false, ShowActivated = false,
                     WindowStyle = WindowStyle.None,
@@ -212,7 +212,11 @@ public sealed class WebChatService : IWebChatService, IDisposable
                 site.LoginWindow = null;
                 loginWin.Content = null;
                 if (site.HostWindow != null)
+                {
+                    site.HostWindow.Width = 1280;
+                    site.HostWindow.Height = 900;
                     site.HostWindow.Content = site.WebView;
+                }
                 loginDone.TrySetResult(site.IsLoggedIn);
             };
             site.LoginWindow = loginWin;
@@ -318,7 +322,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
         // Snapshot: count and text snippet of assistant messages BEFORE we send
         var (snapshotCount, lastAsstSnippet) = await GetAssistantSnapshotAsync(site);
 
-        var typed = await TypeMessageAsync(site, message);
+        var typed = await TypeMessageAsync(site, message, ct);
         if (typed == "no-input")
         {
             yield return "⚠️ Could not find the chat input. Please try again.";
@@ -330,12 +334,17 @@ public sealed class WebChatService : IWebChatService, IDisposable
             yield break;
         }
 
-        await Task.Delay(400, ct);
+        await Task.Delay(300, ct);
         var submitted = await SubmitMessageAsync(site, ct);
         if (!submitted)
         {
-            yield return "⚠️ Could not submit message to Web Chat. Send button was not ready.";
-            yield break;
+            var isGenerating = await ExecScriptBoolAsync(site,
+                "(function(){ return !!document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]'); })()");
+            if (!isGenerating)
+            {
+                yield return "⚠️ Could not submit message to Web Chat. Send button was not ready.";
+                yield break;
+            }
         }
 
         // Stream the response (only messages appearing AFTER snapshot)
@@ -375,10 +384,22 @@ public sealed class WebChatService : IWebChatService, IDisposable
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
             var js = "(function(){"
+                   + "  try {"
+                   + "    var closeBtns = document.querySelectorAll('button[aria-label=\"Close\"], button[data-testid=\"close-button\"], div[role=\"dialog\"] button');"
+                   + "    for (var b of closeBtns) {"
+                   + "      var txt = (b.innerText || b.textContent || '').toLowerCase();"
+                   + "      if (txt.includes('stay logged out') || txt.includes('dismiss') || txt.includes('close') || txt.includes('accept') || txt.includes('not now')) {"
+                   + "        b.click();"
+                   + "      }"
+                   + "    }"
+                   + "  } catch(e) {}"
                    + "  var el = document.querySelector('#prompt-textarea')"
                    + "         || document.querySelector('#chat-input')"
+                   + "         || document.querySelector('div[id=\"prompt-textarea\"]')"
+                   + "         || document.querySelector('div[role=\"textbox\"][contenteditable=\"true\"]')"
+                   + "         || document.querySelector('div[contenteditable=\"true\"]')"
                    + "         || document.querySelector('textarea[placeholder]')"
-                   + "         || document.querySelector('div[contenteditable=\"true\"]');"
+                   + "         || document.querySelector('textarea');"
                    + "  return el ? 'ready' : 'wait';"
                    + "})()";
             if (await ExecScriptStringAsync(site, js) == "ready") return true;
@@ -387,7 +408,7 @@ public sealed class WebChatService : IWebChatService, IDisposable
         return false;
     }
 
-    private async Task<string> TypeMessageAsync(SiteState site, string message)
+    private async Task<string> TypeMessageAsync(SiteState site, string message, CancellationToken ct = default)
     {
         // 1. Give focus to WebView2 natively
         try
@@ -398,92 +419,188 @@ public sealed class WebChatService : IWebChatService, IDisposable
 
         var msg = JsStr(message);
 
-        // 2. Perform robust multi-layer DOM insertion with ProseMirror and textarea support
-        var prepJs = "(function(){"
-            + "  var input = document.querySelector('#prompt-textarea')"
-            + "           || document.querySelector('#chat-input')"
-            + "           || document.querySelector('div[id=\"prompt-textarea\"]')"
-            + "           || document.querySelector('div[contenteditable=\"true\"]')"
-            + "           || document.querySelector('textarea');"
+        // 2. Multi-layer insertion script supporting ProseMirror, synthetic paste, execCommand, and textareas
+        var insertJs = "(function(){"
+            + "  function findInput() {"
+            + "    var el = document.querySelector('#prompt-textarea');"
+            + "    if (el) {"
+            + "      if (el.getAttribute('contenteditable') === 'true' || el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return el;"
+            + "      var inner = el.querySelector('div[contenteditable=\"true\"], [contenteditable=\"true\"], textarea');"
+            + "      if (inner) return inner;"
+            + "      return el;"
+            + "    }"
+            + "    return document.querySelector('#chat-input')"
+            + "        || document.querySelector('div[id=\"prompt-textarea\"]')"
+            + "        || document.querySelector('div[role=\"textbox\"][contenteditable=\"true\"]')"
+            + "        || document.querySelector('div[contenteditable=\"true\"]')"
+            + "        || document.querySelector('textarea[placeholder]')"
+            + "        || document.querySelector('textarea');"
+            + "  }"
+            + ""
+            + "  try {"
+            + "    var closeBtns = document.querySelectorAll('button[aria-label=\"Close\"], button[data-testid=\"close-button\"], div[role=\"dialog\"] button');"
+            + "    for (var b of closeBtns) {"
+            + "      var txt = (b.innerText || b.textContent || '').toLowerCase();"
+            + "      if (txt.includes('stay logged out') || txt.includes('dismiss') || txt.includes('close') || txt.includes('accept') || txt.includes('not now')) {"
+            + "        b.click();"
+            + "      }"
+            + "    }"
+            + "  } catch(e) {}"
+            + ""
+            + "  var input = findInput();"
             + "  if (!input) return 'no-input';"
-            + "  input.focus();"
+            + ""
             + "  var text = " + msg + ";"
+            + "  input.focus();"
+            + ""
+            + "  // Strategy A: Standard Textarea / Input (DeepSeek, etc.)"
             + "  if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {"
-            + "    var desc = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')"
-            + "            || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');"
+            + "    var proto = input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;"
+            + "    var desc = Object.getOwnPropertyDescriptor(proto, 'value');"
             + "    if (desc && desc.set) { desc.set.call(input, text); }"
             + "    else { input.value = text; }"
-            + "    input.dispatchEvent(new Event('input',  { bubbles: true }));"
-            + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
+            + "    input.dispatchEvent(new Event('input',  { bubbles: true, composed: true }));"
+            + "    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));"
             + "    return (input.value || '').trim().length > 0 ? 'ok' : 'empty';"
-            + "  } else {"
-            + "    // Contenteditable (ChatGPT / ProseMirror)"
-            + "    // Clear existing child nodes"
-            + "    while (input.firstChild) { input.removeChild(input.firstChild); }"
-            + "    var p = document.createElement('p');"
-            + "    var lines = text.split('\\n');"
-            + "    for (var i = 0; i < lines.length; i++) {"
-            + "      if (i > 0) p.appendChild(document.createElement('br'));"
-            + "      if (lines[i].length > 0) p.appendChild(document.createTextNode(lines[i]));"
+            + "  }"
+            + ""
+            + "  // Strategy B: ProseMirror View transaction dispatch"
+            + "  try {"
+            + "    var curEl = input;"
+            + "    var pmView = null;"
+            + "    while (curEl && !pmView) {"
+            + "      if (curEl.pmViewDesc && curEl.pmViewDesc.view) pmView = curEl.pmViewDesc.view;"
+            + "      else if (curEl._pmViewDesc && curEl._pmViewDesc.view) pmView = curEl._pmViewDesc.view;"
+            + "      curEl = curEl.parentElement;"
             + "    }"
-            + "    input.appendChild(p);"
-            + "    var range = document.createRange();"
-            + "    range.selectNodeContents(p);"
-            + "    range.collapse(false);"
+            + "    if (pmView && pmView.state && pmView.dispatch) {"
+            + "      var tr = pmView.state.tr;"
+            + "      tr.delete(0, pmView.state.doc.content.size);"
+            + "      tr.insertText(text, 0);"
+            + "      pmView.dispatch(tr);"
+            + "      pmView.focus();"
+            + "      var cur = (input.innerText || input.textContent || '').trim();"
+            + "      if (cur.length > 0) return 'ok';"
+            + "    }"
+            + "  } catch(e) {}"
+            + ""
+            + "  // Strategy C: Synthetic ClipboardEvent / Paste (DataTransfer)"
+            + "  try {"
             + "    var sel = window.getSelection();"
+            + "    var range = document.createRange();"
+            + "    range.selectNodeContents(input);"
             + "    sel.removeAllRanges();"
             + "    sel.addRange(range);"
-            + "    try { input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text })); } catch(e){}"
-            + "    try { input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: text })); } catch(e){}"
-            + "    input.dispatchEvent(new Event('input', { bubbles: true }));"
-            + "    input.dispatchEvent(new Event('change', { bubbles: true }));"
+            + "    var dt = new DataTransfer();"
+            + "    dt.setData('text/plain', text);"
+            + "    var pasteEv = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });"
+            + "    input.dispatchEvent(pasteEv);"
             + "    var cur = (input.innerText || input.textContent || '').trim();"
-            + "    return cur.length > 0 ? 'ok' : 'empty';"
-            + "  }"
+            + "    if (cur.length > 0) {"
+            + "      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));"
+            + "      return 'ok';"
+            + "    }"
+            + "  } catch(e) {}"
+            + ""
+            + "  // Strategy D: document.execCommand('insertText')"
+            + "  try {"
+            + "    input.focus();"
+            + "    document.execCommand('selectAll', false, null);"
+            + "    document.execCommand('insertText', false, text);"
+            + "    var cur = (input.innerText || input.textContent || '').trim();"
+            + "    if (cur.length > 0) {"
+            + "      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));"
+            + "      return 'ok';"
+            + "    }"
+            + "  } catch(e) {}"
+            + ""
+            + "  // Strategy E: InputEvent ('beforeinput' + 'input')"
+            + "  try {"
+            + "    input.focus();"
+            + "    input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));"
+            + "    input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));"
+            + "    var cur = (input.innerText || input.textContent || '').trim();"
+            + "    if (cur.length > 0) return 'ok';"
+            + "  } catch(e) {}"
+            + ""
+            + "  // Strategy F: Safe DOM Paragraph insertion"
+            + "  try {"
+            + "    var p = input.querySelector('p');"
+            + "    if (!p) { p = document.createElement('p'); input.appendChild(p); }"
+            + "    p.textContent = text;"
+            + "    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));"
+            + "    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));"
+            + "  } catch(e) {}"
+            + ""
+            + "  var finalCur = (input.innerText || input.textContent || '').trim();"
+            + "  return finalCur.length > 0 ? 'ok' : 'empty';"
             + "})()";
 
-        var prepRes = await ExecScriptStringAsync(site, prepJs);
-        if (prepRes == "ok") return "ok";
-        if (prepRes == "no-input") return "no-input";
+        var verifyJs = "(function(){"
+            + "  var el = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
+            + "  if (!el) return 'no-input';"
+            + "  var t = (el.value || el.innerText || el.textContent || '').trim();"
+            + "  return t.length > 0 ? 'ok' : 'empty';"
+            + "})()";
 
-        // 3. Fallback: CDP Input.insertText
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var res = await ExecScriptStringAsync(site, insertJs);
+            if (res == "ok") return "ok";
+            if (res == "no-input")
+            {
+                if (attempt < 2)
+                {
+                    await Task.Delay(500, ct);
+                    continue;
+                }
+                return "no-input";
+            }
+
+            await Task.Delay(200, ct);
+            if (await ExecScriptStringAsync(site, verifyJs) == "ok")
+                return "ok";
+        }
+
+        // Fallback: DevTools Protocol Input.insertText
         try
         {
             if (site.WebView?.CoreWebView2 != null)
             {
+                await ExecScriptStringAsync(site,
+                    "(function(){"
+                    + "  var el = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
+                    + "  if (el) { el.focus(); try { document.execCommand('selectAll', false, null); } catch(e){} }"
+                    + "})()");
                 var insertJson = JsonSerializer.Serialize(new { text = message });
                 await _dispatcher.InvokeAsync(async () =>
                 {
                     await site.WebView.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText", insertJson);
                 });
+                await Task.Delay(250, ct);
+                if (await ExecScriptStringAsync(site, verifyJs) == "ok")
+                    return "ok";
             }
         }
         catch { }
 
-        // 4. Verify whether input now has content
-        var verifyJs = "(function(){"
-            + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
-            + "  if (!inp) return 'no-input';"
-            + "  var cur = (inp.value || inp.innerText || inp.textContent || '').trim();"
-            + "  if (cur.length > 0) {"
-            + "    inp.dispatchEvent(new Event('input', { bubbles: true }));"
-            + "    return 'ok';"
-            + "  }"
-            + "  return 'empty';"
-            + "})()";
-
-        return await ExecScriptStringAsync(site, verifyJs);
+        return "empty";
     }
 
     private async Task<bool> SubmitMessageAsync(SiteState site, CancellationToken ct)
     {
+        // Snapshot user message count BEFORE submission
+        var userCountBefore = await ExecScriptIntAsync(site,
+            "(function(){ return document.querySelectorAll('[data-message-author-role=\"user\"]').length; })()");
+
         // 1. Poll for the send button to become enabled and click it (up to 4s, 20 iterations * 200ms)
         for (int i = 0; i < 20; i++)
         {
             var clickJs = "(function(){"
                 + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
                 + "  if (inp) {"
-                + "    inp.dispatchEvent(new Event('input', { bubbles: true }));"
+                + "    inp.dispatchEvent(new Event('input', { bubbles: true, composed: true }));"
+                + "    inp.dispatchEvent(new Event('change', { bubbles: true, composed: true }));"
                 + "  }"
                 + "  var btn = document.querySelector('button[data-testid=\"send-button\"]')"
                 + "          || document.querySelector('button[data-testid=\"composer-button-send\"]')"
@@ -507,20 +624,49 @@ public sealed class WebChatService : IWebChatService, IDisposable
                 + "    }"
                 + "  }"
                 + "  if (btn && !btn.disabled) { btn.click(); return 'clicked'; }"
-                + "  if (btn && btn.disabled)  { return 'disabled'; }"
+                + "  if (btn && btn.disabled) {"
+                + "    if (inp) {"
+                + "      inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));"
+                + "      inp.dispatchEvent(new KeyboardEvent('keyup', { key: 'a', bubbles: true }));"
+                + "    }"
+                + "    return 'disabled';"
+                + "  }"
                 + "  return 'not-found';"
                 + "})()";
 
             var clickRes = await ExecScriptStringAsync(site, clickJs);
             if (clickRes == "clicked")
             {
-                await Task.Delay(400, ct);
-                return true;
+                await Task.Delay(300, ct);
+                if (await CheckIsSubmittedAsync(site, userCountBefore))
+                    return true;
             }
             await Task.Delay(200, ct);
         }
 
-        // 2. Fallback: Dispatch native Enter via CDP
+        // 2. Fallback: Dispatch Enter key via JS (keydown, keypress, keyup) and form submit
+        var enterJs = "(function(){"
+            + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
+            + "  if (inp) {"
+            + "    inp.focus();"
+            + "    var kd = new KeyboardEvent('keydown', { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true });"
+            + "    inp.dispatchEvent(kd);"
+            + "    var kp = new KeyboardEvent('keypress', { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true });"
+            + "    inp.dispatchEvent(kp);"
+            + "    var ku = new KeyboardEvent('keyup', { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true });"
+            + "    inp.dispatchEvent(ku);"
+            + "    var form = inp.closest('form');"
+            + "    if (form) { try { form.requestSubmit(); } catch(e){} }"
+            + "    return 'enter';"
+            + "  }"
+            + "  return 'no-input';"
+            + "})()";
+        await ExecScriptStringAsync(site, enterJs);
+        await Task.Delay(400, ct);
+        if (await CheckIsSubmittedAsync(site, userCountBefore))
+            return true;
+
+        // 3. Fallback: Dispatch native Enter via CDP
         try
         {
             if (site.WebView?.CoreWebView2 != null)
@@ -536,40 +682,38 @@ public sealed class WebChatService : IWebChatService, IDisposable
         }
         catch { }
 
-        // 3. Fallback: Dispatch Enter key via JS
-        var enterJs = "(function(){"
-            + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
-            + "  if (inp) {"
-            + "    inp.focus();"
-            + "    inp.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true }));"
-            + "    inp.dispatchEvent(new KeyboardEvent('keyup', { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true }));"
-            + "    return 'enter';"
-            + "  }"
-            + "  return 'no-input';"
-            + "})()";
-        await ExecScriptStringAsync(site, enterJs);
-
-        // 4. Verify whether message was actually submitted (poll for up to 3s)
-        for (int i = 0; i < 10; i++)
+        // 4. Verify whether message was actually submitted (poll for up to 4s)
+        for (int i = 0; i < 14; i++)
         {
             await Task.Delay(300, ct);
-            var checkSubmittedJs = "(function(){"
-                + "  var stop = document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]');"
-                + "  if (stop) return 'submitted-generating';"
-                + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
-                + "  var text = (inp ? (inp.value || inp.innerText || inp.textContent || '') : '').trim();"
-                + "  if (text.length === 0) return 'submitted-empty';"
-                + "  return 'still-filled';"
-                + "})()";
-
-            var status = await ExecScriptStringAsync(site, checkSubmittedJs);
-            if (status is "submitted-generating" or "submitted-empty")
-            {
+            if (await CheckIsSubmittedAsync(site, userCountBefore))
                 return true;
-            }
         }
 
         return false;
+    }
+
+    private async Task<bool> CheckIsSubmittedAsync(SiteState site, int userCountBefore)
+    {
+        var checkSubmittedJs = "(function(){"
+            + "  var stop = document.querySelector('button[data-testid=\"stop-button\"], button[aria-label*=\"Stop\"], button[aria-label*=\"stop\"]');"
+            + "  if (stop) return 'submitted-generating';"
+            + "  var userNodes = document.querySelectorAll('[data-message-author-role=\"user\"]').length;"
+            + "  if (userNodes > " + userCountBefore + ") return 'submitted-user-node';"
+            + "  var inp = document.querySelector('#prompt-textarea, #chat-input, div[contenteditable=\"true\"], textarea');"
+            + "  var text = (inp ? (inp.value || inp.innerText || inp.textContent || '') : '').trim();"
+            + "  if (text.length === 0) return 'submitted-empty';"
+            + "  return 'still-filled';"
+            + "})()";
+
+        var status = await ExecScriptStringAsync(site, checkSubmittedJs);
+        return status is "submitted-generating" or "submitted-user-node" or "submitted-empty";
+    }
+
+    private async Task<int> ExecScriptIntAsync(SiteState site, string js)
+    {
+        var str = await ExecScriptStringAsync(site, js);
+        return int.TryParse(str, out var v) ? v : 0;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
